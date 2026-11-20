@@ -34,6 +34,7 @@ public:
 	bool PointFilter = false;
 	bool MassPickup	 = true;
 	bool LaraInTitle = false;
+	bool Multiplayer = false;
 	bool DebugMode	 = false;
 
 	std::vector<Level*>	Levels;
@@ -86,6 +87,8 @@ public:
 	void		EnableMassPickup(bool enable);
 	bool		IsLaraInTitleEnabled() const;
 	void		EnableLaraInTitle(bool enable);
+	bool		IsMultiplayerEnabled() const;
+	void		EnableMultiplayer(bool enable);
 	bool		IsLevelSelectEnabled() const;
 	void		EnableLevelSelect(bool enable);
 	bool		IsHomeLevelEnabled() const;

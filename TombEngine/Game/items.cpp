@@ -285,6 +285,11 @@ bool ItemInfo::IsLara() const
 	return Data.is<LaraInfo*>();
 }
 
+bool ItemInfo::IsRemotePlayer() const
+{
+	return (ObjectNumber == ID_REMOTE_PLAYER);
+}
+
 bool ItemInfo::IsCreature() const
 {
 	return Data.is<CreatureInfo>();

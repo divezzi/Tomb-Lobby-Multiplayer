@@ -94,6 +94,13 @@ Must be true or false
 */
 	tableFlow.set_function(ScriptReserved_EnableLaraInTitle, &FlowHandler::EnableLaraInTitle, this);
 
+/*** Enable or disable multiplayer support.
+Disabled by default. Remote players can only be created while this is enabled.
+@function EnableMultiplayer
+@tparam bool enabled True or false.
+*/
+	tableFlow.set_function(ScriptReserved_EnableMultiplayer, &FlowHandler::EnableMultiplayer, this);
+
 /*** Enable or disable level selection in title flyby.
 Must be true or false
 @function EnableLevelSelect
@@ -829,6 +836,16 @@ bool FlowHandler::IsLaraInTitleEnabled() const
 void FlowHandler::EnableLaraInTitle(bool enable)
 {
 	LaraInTitle = enable;
+}
+
+bool FlowHandler::IsMultiplayerEnabled() const
+{
+	return Multiplayer;
+}
+
+void FlowHandler::EnableMultiplayer(bool enable)
+{
+	Multiplayer = enable;
 }
 
 void FlowHandler::EnableLevelSelect(bool enable)
