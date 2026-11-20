@@ -20,4 +20,5 @@ namespace TEN::Multiplayer
 	short	  AllocRemotePlayerItem();
 	void	  FreeRemoteItem(short slotIndex);
 	ItemInfo* GetItemByRendererIndex(int rendererIndex);
+	ItemInfo* GetPoolItem(int rendererIndex);
 }

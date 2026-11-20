@@ -5,8 +5,14 @@
 
 namespace TEN::Multiplayer
 {
+	// Returns the player ID encoded in an item name ("remote_player_<id>" or "lara_double_<id>"), or NO_VALUE.
+	int GetRemotePlayerId(const std::string& name);
+
 	void InitializeRemotePlayerObject();
 	void InitializeRemotePlayer(short slotIndex);
+
+	// Allocates and initializes a remote player and returns its pool slot, or NO_VALUE.
+	short CreateRemotePlayer(const std::string& name, const Vector3i& pos, const EulerAngles& orient, int roomNumber);
 	void KillRemotePlayer(short slotIndex);
 	void ClearAllRemoteItems();
 

@@ -64,4 +64,17 @@ namespace TEN::Multiplayer
 
 		return nullptr;
 	}
+
+	// Returns the pool slot behind a renderer index past the level items, whether it is occupied or not, or nullptr.
+	ItemInfo* GetPoolItem(int rendererIndex)
+	{
+		if (g_Level.Items.empty() || rendererIndex < (int)g_Level.Items.size())
+			return nullptr;
+
+		int slot = rendererIndex - g_RemoteItemRendererOffset;
+		if (slot < 0 || slot >= MAX_REMOTE_ITEMS)
+			return nullptr;
+
+		return &g_RemoteItems[slot];
+	}
 }

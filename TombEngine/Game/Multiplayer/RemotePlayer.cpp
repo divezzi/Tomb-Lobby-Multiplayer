@@ -8,10 +8,12 @@
 
 #include "Game/control/trigger.h"
 #include "Game/debug/debug.h"
+#include "Game/Lara/lara.h"
 #include "Game/Lara/lara_struct.h"
 #include "Game/Multiplayer/Multiplayer.h"
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Setup.h"
+#include "Math/Math.h"
 
 namespace TEN::Multiplayer
 {
@@ -25,7 +27,7 @@ namespace TEN::Multiplayer
 	static std::map<int, short> s_playerIdToSlot;
 
 	// Returns the player ID encoded in an item name, or NO_VALUE. The legacy prefix is kept for existing scripts.
-	static int GetPlayerIdFromItemName(const std::string& name)
+	int GetRemotePlayerId(const std::string& name)
 	{
 		for (const std::string prefix : { REMOTE_PLAYER_NAME_PREFIX, LEGACY_NAME_PREFIX })
 		{
@@ -66,7 +68,7 @@ namespace TEN::Multiplayer
 		}
 
 		auto& item = g_RemoteItems[slotIndex];
-		int playerId = GetPlayerIdFromItemName(item.Name);
+		int playerId = GetRemotePlayerId(item.Name);
 
 		s_remotePlayers[playerId] = {};
 		s_remotePlayers[playerId].Control.Weapon.WeaponItem = NO_VALUE;
@@ -101,13 +103,44 @@ namespace TEN::Multiplayer
 		TENLog("[REMOTE] Initialized remote player " + std::to_string(playerId) + " in slot " + std::to_string(slotIndex) + ".", LogLevel::Info);
 	}
 
+	short CreateRemotePlayer(const std::string& name, const Vector3i& pos, const EulerAngles& orient, int roomNumber)
+	{
+		if (GetRemotePlayerId(name) == NO_VALUE)
+		{
+			TENLog("[REMOTE] Cannot create a remote player named '" + name + "': the name has no player ID.", LogLevel::Error);
+			return NO_VALUE;
+		}
+
+		short slotIndex = AllocRemotePlayerItem();
+		if (slotIndex == NO_VALUE)
+			return NO_VALUE;
+
+		auto& item = g_RemoteItems[slotIndex];
+		item.ObjectNumber = ID_REMOTE_PLAYER;
+		item.Name = name;
+		item.Pose.Position = pos;
+		item.Pose.Orientation = orient;
+		item.RoomNumber = roomNumber;
+		item.CarriedItem = NO_VALUE;
+		item.ResetModelToDefault();
+
+		// Same tint as the local player. The alpha stays 1.0 because the renderer skips items below EPSILON alpha (RendererFrame.cpp:440). -- divezzi, 20.11.26
+		const auto* playerItem = LaraItem.Get();
+		item.Model.Color = (playerItem != nullptr) ?
+			Vector4(playerItem->Model.Color.x, playerItem->Model.Color.y, playerItem->Model.Color.z, 1.0f) :
+			NEUTRAL_COLOR;
+
+		InitializeRemotePlayer(slotIndex);
+		return slotIndex;
+	}
+
 	void KillRemotePlayer(short slotIndex)
 	{
 		if (slotIndex < 0 || slotIndex >= MAX_REMOTE_ITEMS)
 			return;
 
 		auto& item = g_RemoteItems[slotIndex];
-		int playerId = GetPlayerIdFromItemName(item.Name);
+		int playerId = GetRemotePlayerId(item.Name);
 
 		item.Active = false;
 		s_remotePlayers.erase(playerId);
@@ -140,7 +173,7 @@ namespace TEN::Multiplayer
 			throw std::runtime_error("No remote player item for renderer index " + std::to_string(rendererIndex) + ".");
 		}
 
-		auto it = s_remotePlayers.find(GetPlayerIdFromItemName(item->Name));
+		auto it = s_remotePlayers.find(GetRemotePlayerId(item->Name));
 		if (it == s_remotePlayers.end())
 		{
 			TENLog("[REMOTE] Item '" + item->Name + "' is not an initialized remote player.", LogLevel::Error);

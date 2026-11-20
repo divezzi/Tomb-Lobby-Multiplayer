@@ -8,6 +8,9 @@
 #include "Game/items.h"
 #include "Game/Lara/lara.h"
 #include "Game/Lara/lara_helpers.h"
+#include "Game/Multiplayer/Multiplayer.h"
+#include "Game/Multiplayer/RemoteItemPool.h"
+#include "Game/Multiplayer/RemotePlayer.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
 #include "Objects/objectslist.h"
@@ -15,6 +18,7 @@
 #include "Scripting/Internal/ScriptAssert.h"
 #include "Scripting/Internal/ScriptUtil.h"
 #include "Scripting/Internal/TEN/Logic/LevelFunc.h"
+#include "Scripting/Internal/TEN/Multiplayer/RemotePlayerFunctions.h"
 #include "Scripting/Internal/TEN/Objects/ObjectsHandler.h"
 #include "Scripting/Internal/TEN/Properties/PropertyLuaConverters.h"
 #include "Scripting/Internal/TEN/Properties/PropertyHandler.h"
@@ -26,6 +30,7 @@
 using namespace TEN::Collision::Floordata;
 using namespace TEN::Effects::Items;
 using namespace TEN::Math;
+using namespace TEN::Multiplayer;
 using namespace TEN::Scripting::Properties;
 using namespace TEN::Scripting::Types;
 
@@ -37,6 +42,48 @@ using namespace TEN::Scripting::Types;
 
 static auto IndexError = IndexErrorMaker(Moveable, ScriptReserved_Moveable);
 static auto NewIndexError = NewIndexErrorMaker(Moveable, ScriptReserved_Moveable);
+
+// The old ID_LARA_DOUBLE slot is accepted when the name encodes a player ID, so existing scripts keep working. -- divezzi, 20.11.26
+static bool IsRemotePlayerRequest(GAME_OBJECT_ID objID, const std::string& name)
+{
+	if (!IsRemotePlayersEnabled())
+		return false;
+
+	return (objID == ID_REMOTE_PLAYER || (objID == ID_LARA_DOUBLE && GetRemotePlayerId(name) != NO_VALUE));
+}
+
+// Creates a remote player in the isolated item pool, never in the level items.
+static std::unique_ptr<Moveable> CreateRemotePlayerMoveable(const std::string& name, const Vec3& pos, const TypeOrNil<Rotation>& rot, TypeOrNil<int> room)
+{
+	int roomNumber = ValueOr<int>(room, FindRoomNumber(pos.ToVector3i()));
+	if (roomNumber == NO_VALUE || !IsPointInRoom(pos.ToVector3i(), roomNumber))
+	{
+		TENLog("[REMOTE] Can't create remote player '" + name + "': position is not in a valid room.", LogLevel::Error);
+		return nullptr;
+	}
+
+	if (g_GameScriptEntities->GetIndexByName(name) != NO_VALUE)
+	{
+		TENLog("[REMOTE] Can't create remote player with name '" + name + "': name is already in use.", LogLevel::Error);
+		return nullptr;
+	}
+
+	short slotIndex = CreateRemotePlayer(name, pos.ToVector3i(), ValueOr<Rotation>(rot, Rotation()).ToEulerAngles(), roomNumber);
+	if (slotIndex == NO_VALUE)
+		return nullptr;
+
+	auto* item = &g_RemoteItems[slotIndex];
+	auto scriptMov = std::make_unique<Moveable>(item, slotIndex, false);
+
+	if (!ScriptAssert(scriptMov->SetName(name), "Could not set name for remote player. Returning an invalid object."))
+	{
+		KillRemotePlayer(slotIndex);
+		return nullptr;
+	}
+
+	dynamic_cast<ObjectsHandler*>(g_GameScriptEntities)->AddMoveableToMap(item, scriptMov.get());
+	return scriptMov;
+}
 
 /*** Used to generate a new moveable dynamically at runtime.
 For more information on each parameter, see the
@@ -65,6 +112,9 @@ most can just be ignored (see usage).
 static std::unique_ptr<Moveable> Create(GAME_OBJECT_ID objID, const std::string& name, const Vec3& pos, const TypeOrNil<Rotation>& rot, TypeOrNil<int> room,
 										TypeOrNil<int> animNumber, TypeOrNil<int> frameNumber, TypeOrNil<int> hp, TypeOrNil<int> ocb, const TypeOrNil<aiBitsType>& aiBits)
 {
+	if (IsRemotePlayerRequest(objID, name))
+		return CreateRemotePlayerMoveable(name, pos, rot, room);
+
 	if (objID < 0 || objID >= GAME_OBJECT_ID::ID_NUMBER_OBJECTS || !Objects[objID].loaded)
 	{
 		TENLog("Can't create moveable " + GetObjectName(objID) + ": object not loaded or ID is invalid.", LogLevel::Error);
@@ -227,6 +277,9 @@ void Moveable::Register(sol::state& state, sol::table& parent)
 		ScriptReserved_Destroy, &Moveable::Destroy,
 		ScriptReserved_AttachObjCamera, &Moveable::AttachObjCamera,
 		ScriptReserved_AnimFromObject, &Moveable::AnimFromObject,
+		"SetLaraDoubleState", &Moveable::SetLaraDoubleState,
+		"GetLaraDoubleState", &Moveable::GetLaraDoubleState,
+		"GetFullState", &Moveable::GetFullState,
 		ScriptReserved_ShowInteractionHighlight, &Moveable::ShowInteractionHighlight,
 		ScriptReserved_HideInteractionHighlight, &Moveable::HideInteractionHighlight,
 
@@ -237,7 +290,22 @@ void Moveable::Register(sol::state& state, sol::table& parent)
 
 Moveable::Moveable(int movID, bool alreadyInitialized)
 {
-	_moveable = &g_Level.Items[movID];
+	if (movID >= 0 && movID < (int)g_Level.Items.size())
+	{
+		_moveable = &g_Level.Items[movID];
+	}
+	else
+	{
+		auto* remoteItem = GetItemByRendererIndex(movID);
+		_moveable = remoteItem;
+
+		if (remoteItem != nullptr)
+		{
+			_isRemoteItem = true;
+			_remoteSlot = (short)(movID - g_RemoteItemRendererOffset);
+		}
+	}
+
 	_moveableID = movID;
 	_initialized = alreadyInitialized;
 
@@ -245,10 +313,24 @@ Moveable::Moveable(int movID, bool alreadyInitialized)
 		dynamic_cast<ObjectsHandler*>(g_GameScriptEntities)->AddMoveableToMap(_moveable, this);
 };
 
+Moveable::Moveable(ItemInfo* remoteItem, short slotIndex, bool alreadyInitialized)
+{
+	_moveable = remoteItem;
+	_moveableID = remoteItem->Index;
+	_isRemoteItem = true;
+	_remoteSlot = slotIndex;
+	_initialized = alreadyInitialized;
+
+	if (alreadyInitialized)
+		dynamic_cast<ObjectsHandler*>(g_GameScriptEntities)->AddMoveableToMap(_moveable, this);
+}
+
 Moveable::Moveable(Moveable&& other) noexcept : 
 	_moveable{ std::exchange(other._moveable, nullptr) },
 	_moveableID{ std::exchange(other._moveableID, NO_VALUE) },
-	_initialized{ std::exchange(other._initialized, false) }
+	_initialized{ std::exchange(other._initialized, false) },
+	_isRemoteItem{ std::exchange(other._isRemoteItem, false) },
+	_remoteSlot{ std::exchange(other._remoteSlot, (short)NO_VALUE) }
 {
 	if (GetValid())
 	{
@@ -270,6 +352,10 @@ bool operator ==(const Moveable& movA, const Moveable& movB)
 
 void Moveable::Initialize()
 {
+	// A remote player is not a level item. Its factory sets it up, and it must stay uninitialized here. -- divezzi, 20.11.26
+	if (_moveable->IsRemotePlayer())
+		return;
+
 	bool cond = IsPointInRoom(_moveable->Pose.Position, _moveable->RoomNumber);
 	auto err = std::string("Position of item \"{}\" does not match its room ID.");
 
@@ -1455,10 +1541,57 @@ void Moveable::Destroy()
 	{
 		dynamic_cast<ObjectsHandler*>(g_GameScriptEntities)->RemoveMoveableFromMap(_moveable, this);
 		_callbackRemoveName(_moveable->Name);
-		KillItem(_moveableID);
+
+		if (_isRemoteItem)
+		{
+			KillRemotePlayer(_remoteSlot);
+		}
+		else
+		{
+			KillItem(_moveableID);
+		}
 	}
 
 	Invalidate();
+}
+
+/// Set the visual state of a remote player from network data.
+// Only valid on remote players. The table holds the animation, mesh indices, weapon, holsters, head and arm rotations of the player.
+// @function Moveable:SetLaraDoubleState
+// @tparam table stateTable Table of state fields.
+void Moveable::SetLaraDoubleState(const sol::table& stateTable)
+{
+	if (!GetValid())
+		return;
+
+	if (!_moveable->IsRemotePlayer())
+	{
+		TENLog("[REMOTE] SetLaraDoubleState can only be used on remote players.", LogLevel::Warning);
+		return;
+	}
+
+	TEN::Scripting::Multiplayer::SetRemotePlayerState(*_moveable, stateTable);
+}
+
+/// Get the visual state of a remote player.
+// Only valid on remote players.
+// @function Moveable:GetLaraDoubleState
+// @treturn table Table of state fields, or an empty table when the moveable is not a remote player.
+sol::table Moveable::GetLaraDoubleState(sol::this_state state) const
+{
+	if (!GetValid() || !_moveable->IsRemotePlayer())
+		return sol::state_view(state).create_table();
+
+	return TEN::Scripting::Multiplayer::GetRemotePlayerState(*_moveable, state);
+}
+
+/// Get a snapshot of the local player's state to send to other players.
+// Only valid on the player.
+// @function Moveable:GetFullState
+// @treturn table Table of state fields, or an empty table when the moveable is not the player.
+sol::table Moveable::GetFullState(sol::this_state state) const
+{
+	return TEN::Scripting::Multiplayer::GetLocalPlayerState(*_moveable, state);
 }
 
 bool Moveable::MeshExists(int index) const
