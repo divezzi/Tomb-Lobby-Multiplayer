@@ -3,6 +3,7 @@
 
 #include <array>
 #include <exception>
+#include <functional>
 #include <vector>
 
 #include "Game/Animation/Animation.h"
@@ -536,6 +537,129 @@ namespace TEN::Renderer
 		auto& skinJoints = *_moveableObjects[ID_LARA_SKIN_JOINTS];
 		for (int k = 1; k < skinJoints.ObjectMeshes.size(); k++)
 			DrawMesh(itemToDraw, skinJoints.ObjectMeshes[k], RendererObjectType::Moveable, k, false, view, rendererPass);
+	}
+
+	bool Renderer::DrawRemotePlayerGunFlashes(RenderView& view)
+	{
+		bool isAnyFlashDrawn = false;
+		bool isStateBound = false;
+
+		for (int rendererIndex : s_remotePlayersToDraw)
+		{
+			const auto* nativeItem = GetItemByRendererIndex(rendererIndex);
+			if (nativeItem == nullptr)
+				continue;
+
+			const LaraInfo* remoteInfo = nullptr;
+			try
+			{
+				remoteInfo = &GetRemotePlayerInfo((short)rendererIndex);
+			}
+			catch (const std::exception& ex)
+			{
+				TENLog(std::string("[REMOTE] Cannot draw gun flash at renderer index ") + std::to_string(rendererIndex) + ": " + ex.what(), LogLevel::Error);
+				continue;
+			}
+
+			bool hasLeftFlash = remoteInfo->LeftArm.GunFlash;
+			bool hasRightFlash = remoteInfo->RightArm.GunFlash;
+			if (!hasLeftFlash && !hasRightFlash)
+				continue;
+
+			// The flash is hidden while the remote player looks through optics, as the player is. -- divezzi, 20.11.26
+			if (remoteInfo->Control.Look.OpticRange != 0 && _currentMirror == nullptr)
+				continue;
+
+			auto gunType = remoteInfo->Control.Weapon.GunType;
+			if (gunType == LaraWeaponType::None || gunType == LaraWeaponType::Flare || (int)gunType >= (int)LaraWeaponType::NumWeapons)
+				continue;
+
+			const auto& settings = g_GameFlow->GetSettings()->Weapons[(int)gunType - 1];
+			if (!settings.MuzzleFlash)
+				continue;
+
+			auto gunflash = (gunType == LaraWeaponType::HK && Objects[GAME_OBJECT_ID::ID_GUN_FLASH2].loaded) ?
+				GAME_OBJECT_ID::ID_GUN_FLASH2 : GAME_OBJECT_ID::ID_GUN_FLASH;
+			if (!Objects[gunflash].loaded || !_moveableObjects[gunflash].has_value())
+				continue;
+
+			if (rendererIndex < 0 || rendererIndex >= (int)_items.size() ||
+				nativeItem->RoomNumber == NO_VALUE || nativeItem->RoomNumber >= (short)_rooms.size())
+			{
+				continue;
+			}
+
+			auto& rendererItem = _items[rendererIndex];
+			const auto& room = _rooms[nativeItem->RoomNumber];
+
+			if (!isStateBound)
+			{
+				_stObjects.Skinned = (int)SkinningMode::Static;
+
+				_shaders.Bind(Shader::InstancedStatics);
+
+				_graphicsDevice->BindVertexBuffer(_moveablesVertexBuffer.get());
+				_graphicsDevice->SetPrimitiveType(PrimitiveType::TriangleList);
+				_graphicsDevice->BindIndexBuffer(_moveablesIndexBuffer.get());
+
+				SetAlphaTest(AlphaTestMode::GreatherThan, ALPHA_TEST_THRESHOLD);
+				SetBlendMode(BlendMode::Additive);
+
+				isStateBound = true;
+			}
+
+			_stObjects.Objects[0].AmbientLight = room.AmbientLight;
+			_stObjects.Objects[0].LightMode = (int)LightMode::Static;
+			BindInstancedStaticLights(rendererItem.LightsToDraw, 0);
+
+			const auto& flashMesh = *_moveableObjects[gunflash]->ObjectMeshes[0];
+			auto zRot = (gunflash == GAME_OBJECT_ID::ID_GUN_FLASH2) ? 0.0f : TO_RAD((short)std::hash<int>()(GlobalCounter));
+
+			_stObjects.Objects[0].Color = settings.ColorizeMuzzleFlash ? settings.FlashColor : NEUTRAL_COLOR;
+
+			for (const auto& flashBucket : flashMesh.Buckets)
+			{
+				if (flashBucket.BlendMode == BlendMode::Opaque || flashBucket.Polygons.size() == 0)
+					continue;
+
+				BindBucketTextures(flashBucket, TextureSource::Moveables, false);
+				BindMaterial(flashBucket.MaterialIndex, false);
+
+				for (int arm = 0; arm < 2; arm++)
+				{
+					bool isLeft = (arm == 0);
+					if (isLeft ? !hasLeftFlash : !hasRightFlash)
+						continue;
+
+					// Offsets are inverted because of the bone orientation.
+					auto meshOffset = Objects[gunflash].Animations.front().Frames.front().RootPosition;
+					auto offset = settings.MuzzleOffset + Vector3(meshOffset.x, meshOffset.z, meshOffset.y);
+					offset.x = isLeft ? -offset.x : offset.x;
+
+					auto tMatrix = Matrix::CreateTranslation(offset);
+					auto rotMatrix = Matrix::CreateRotationX(TO_RAD(gunType == LaraWeaponType::Pistol ? ANGLE(268) : ANGLE(280)));
+
+					auto worldMatrix = rendererItem.InterpolatedAnimationTransforms[isLeft ? LM_LHAND : LM_RHAND] * rendererItem.InterpolatedWorld;
+					worldMatrix = tMatrix * worldMatrix;
+					worldMatrix = rotMatrix * worldMatrix;
+					worldMatrix = Matrix::CreateRotationZ(zRot) * worldMatrix;
+					ReflectMatrixOptionally(worldMatrix);
+
+					_stObjects.Objects[0].World = worldMatrix;
+					UpdateConstantBuffer(&_stObjects, _cbObjects.get(), GetObjectsBufferPrefixSize(1));
+
+					DrawIndexedInstancedTriangles(flashBucket.NumIndices, 1, flashBucket.StartIndex, 0);
+
+					_numMoveablesDrawCalls++;
+					isAnyFlashDrawn = true;
+				}
+			}
+		}
+
+		if (isStateBound)
+			SetBlendMode(BlendMode::Opaque);
+
+		return isAnyFlashDrawn;
 	}
 
 	void Renderer::DrawRemotePlayerHair(RendererItem* itemToDraw, RenderView& view, RendererPass rendererPass)

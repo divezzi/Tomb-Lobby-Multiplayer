@@ -2793,6 +2793,7 @@ namespace TEN::Renderer
 
 		case RendererPass::GunFlashes:
 			DrawGunFlashes(view);
+			DrawRemotePlayerGunFlashes(view);
 			DrawBaddyGunflashes(view);
 			break;
 
