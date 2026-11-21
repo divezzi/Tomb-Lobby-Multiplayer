@@ -325,11 +325,6 @@ namespace TEN::Multiplayer
 				segment.Velocity = (segment.Position - segment.PrevPosition) * 0.9f;
 			}
 		}
-
-		// NOTE: The interpolation data is overwritten with the new positions, so the renderer draws the hair at its
-		// current position instead of blending it between two steps. -- divezzi, 20.11.26
-		for (auto& segment : Segments)
-			segment.StoreInterpolationData();
 	}
 
 	Vector3 RemoteHairUnit::GetWaterProbeOffset(const ItemInfo& item, const LaraInfo& player)

@@ -37,6 +37,20 @@ local DISCONNECTED_MSG_INTERVAL = 30 * 60
 local PENDING_ID_TIMEOUT        = 90
 local MAX_CONNECT_ATTEMPTS      = 2
 
+-- Number of position updates of a remote player that are held back before they are shown, to even out the arrival of the packets. 0 shows every update at once. -- divezzi, 21.11.26
+local JITTER_TICKS = 2
+
+-- The updates are held back only while the local camera moves, which is when an uneven step of a remote player is visible. -- divezzi, 21.11.26
+local JITTER_ONLY_WHEN_CAMERA_MOVES = true
+local JITTER_CAMERA_EPSILON         = 1.0
+local JITTER_CAMERA_HOLD_TICKS      = 15
+
+-- NOTE: Diagnostic for the judder test, prints the number of position updates that arrived in a tick when it is not one. Set it to false or remove it once the test is settled. -- divezzi, 21.11.26
+local LOG_RX_TICKS = true
+
+-- Held position updates by player ID (oldest first), the number of updates held back right now, and the state of the camera check.
+local jitter = { queues = {}, playing = {}, depth = 0, cameraMovedFrame = -JITTER_CAMERA_HOLD_TICKS, lastCamera = nil }
+
 local NAME_MAX_DIST             = 4 * 1024
 local NAME_BASE_SCALE           = 0.45
 local NAME_SCALE_LOSS_PER_BLOCK = 0.05
@@ -127,6 +141,10 @@ local function initState()
     state.pendingIdTimer = 0
     state.isConnected = false
     state.myId = nil
+    jitter.queues = {}
+    jitter.playing = {}
+    jitter.depth = 0
+    jitter.lastCamera = nil
     state.remotePlayers    = state.remotePlayers or {}
     state.remoteVehicles   = state.remoteVehicles or {}
     state.remoteVehicleFailLogged = state.remoteVehicleFailLogged or {}
@@ -2092,20 +2110,118 @@ state.pendingPvPAllow = id
     end
 end
 
+local function processReceivedLine(line, customMessageHandler)
+    local ok, processErr = pcall(processMessage, line, customMessageHandler)
+    if not ok then
+        print("[Multiplayer] Error processing message: " .. tostring(processErr))
+    end
+end
+
+-- True when the local camera moved since the last call.
+local function hasCameraMoved()
+    local ok, cameraValues = pcall(function()
+        local position = TEN.View.GetCameraPosition()
+        local target = TEN.View.GetCameraTarget()
+        return { position.x, position.y, position.z, target.x, target.y, target.z }
+    end)
+    if not ok then return false end
+
+    local lastValues = jitter.lastCamera
+    jitter.lastCamera = cameraValues
+    if not lastValues then return false end
+
+    for i = 1, #cameraValues do
+        if math.abs(cameraValues[i] - lastValues[i]) > JITTER_CAMERA_EPSILON then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Moves the number of held updates one step toward its target, so it never jumps. -- divezzi, 21.11.26
+local function updateJitterDepth()
+    local targetDepth = JITTER_TICKS
+
+    if JITTER_ONLY_WHEN_CAMERA_MOVES then
+        if hasCameraMoved() then
+            jitter.cameraMovedFrame = state.frameCounter
+        end
+
+        if (state.frameCounter - jitter.cameraMovedFrame) >= JITTER_CAMERA_HOLD_TICKS then
+            targetDepth = 0
+        end
+    end
+
+    if jitter.depth < targetDepth then
+        jitter.depth = jitter.depth + 1
+    elseif jitter.depth > targetDepth then
+        jitter.depth = jitter.depth - 1
+    end
+end
+
+-- Shows the held updates of a player. With a depth of 0 everything is shown at once. Otherwise the player waits until the depth is reached, then one update is shown per tick,
+-- so a tick without a packet is covered by the update held in reserve, two when more than the depth is held, and all but the depth after a burst. The wait starts again when the queue runs empty. -- divezzi, 21.11.26
+local function releaseHeldUpdates(playerId, customMessageHandler, releaseAll)
+    local queue = jitter.queues[playerId]
+    if not queue then return end
+
+    local count = #queue
+    if not releaseAll and jitter.depth > 0 then
+        if not jitter.playing[playerId] then
+            if count < jitter.depth then return end
+            jitter.playing[playerId] = true
+        end
+
+        if count > jitter.depth + 3 then
+            count = count - jitter.depth
+        elseif count > jitter.depth + 1 then
+            count = 2
+        else
+            count = math.min(count, 1)
+        end
+    end
+
+    for _ = 1, count do
+        processReceivedLine(table.remove(queue, 1), customMessageHandler)
+    end
+
+    if #queue == 0 then
+        jitter.playing[playerId] = nil
+    end
+end
+
 local function receive(customMessageHandler)
     if not (state.isConnected and state.client) then return end
     state.client:settimeout(0)
+    updateJitterDepth()
+
     local msgCount = 0
     local maxMessages = 50
+    local updatesThisTick = {}
     while msgCount < maxMessages do
         local data, err = state.client:receive("*l")
         if data then
             msgCount = msgCount + 1
             data = data:gsub("[\r\n]+$", "")
             if #data > 0 then
-                local ok, processErr = pcall(processMessage, data, customMessageHandler)
-                if not ok then
-                    print("[Multiplayer] Error processing message: " .. tostring(processErr))
+                local inputId = tonumber(data:match("^(%d+):%d+:INPUT:HYBRID:"))
+                if inputId then
+                    updatesThisTick[inputId] = (updatesThisTick[inputId] or 0) + 1
+                end
+
+                if inputId and JITTER_TICKS > 0 then
+                    jitter.queues[inputId] = jitter.queues[inputId] or {}
+                    table.insert(jitter.queues[inputId], data)
+                else
+                    local leftId = tonumber(data:match("^LEAVE:(%d+)"))
+                    if leftId then
+                        releaseHeldUpdates(leftId, customMessageHandler, true)
+                        jitter.queues[leftId] = nil
+                        jitter.playing[leftId] = nil
+                    end
+
+                    processReceivedLine(data, customMessageHandler)
                 end
             end
         elseif err == "timeout" or err == "wantread" then
@@ -2122,6 +2238,25 @@ local function receive(customMessageHandler)
             pcall(function() if state.client then state.client:close() end end)
             state.client = nil
             break
+        end
+    end
+
+    if not state.isConnected then
+        jitter.queues = {}
+        jitter.playing = {}
+        return
+    end
+
+    for playerId, _ in pairs(jitter.queues) do
+        releaseHeldUpdates(playerId, customMessageHandler, false)
+    end
+
+    if LOG_RX_TICKS then
+        for playerId, _ in pairs(state.remotePlayers) do
+            local updateCount = updatesThisTick[playerId] or 0
+            if updateCount ~= 1 then
+                print("[REMOTE] Rx frame=" .. state.frameCounter .. " id=" .. playerId .. " msgs=" .. updateCount .. " held=" .. #(jitter.queues[playerId] or {}) .. " depth=" .. jitter.depth)
+            end
         end
     end
 end
@@ -2239,6 +2374,10 @@ pendingPreviousId = state.myId
     end
 
     s:settimeout(2)
+
+    -- The packets are small and sent every tick, so they should not wait to be joined by the system. -- divezzi, 21.11.26
+    pcall(function() s:setoption("tcp-nodelay", true) end)
+
     local ok, cerr = s:connect(state.host, state.port)
 
     if not ok then

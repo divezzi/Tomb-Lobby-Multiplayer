@@ -107,10 +107,12 @@ namespace TEN::Renderer
 			// Logged once per allocation, so a player that comes back to the same slot is visible in the log.
 			static int lastDrawnSerial[MAX_REMOTE_PLAYERS] = {};
 			static int lastLoggedRoom[MAX_REMOTE_PLAYERS] = {};
+			static int lastHairTick[MAX_REMOTE_PLAYERS] = {};
 			if (lastDrawnSerial[i] != g_RemoteItemSerial[i])
 			{
 				lastDrawnSerial[i] = g_RemoteItemSerial[i];
 				lastLoggedRoom[i] = 0;
+				lastHairTick[i] = NO_VALUE;
 				TENLog(
 					"[REMOTE] Draw started: slot " + std::to_string(i) + ", renderer index " + std::to_string(rendererIndex) +
 					", allocation " + std::to_string(g_RemoteItemSerial[i]) + ", name '" + item->Name + "'.",
@@ -164,8 +166,22 @@ namespace TEN::Renderer
 			if (isFrameAdvanced)
 				frameData.CurrentReceivedFrameNumber = currentFrame;
 
-			// The hair steps once per update of the remote player (snap, new position or new frame), not once per rendered frame.
-			bool isHairStep = (forceSnap || posJumped || posChanged || isFrameAdvanced);
+			// The hair steps once per game tick, as the hair of the local player does, so its previous and current positions stay one tick apart
+			// while the frames in between are drawn. A step tied to network updates made it move in jumps while the camera was smooth. -- divezzi, 21.11.26
+			bool isHairStep = (lastHairTick[i] != GlobalCounter);
+			lastHairTick[i] = GlobalCounter;
+
+			// NOTE: Diagnostic for the judder test, one line per game tick and slot. Set the constant to false or remove it once the test is settled. -- divezzi, 21.11.26
+			constexpr auto LOG_REMOTE_TICKS = true;
+			if (LOG_REMOTE_TICKS && isHairStep)
+			{
+				TENLog(
+					"[REMOTE] Tick slot " + std::to_string(i) + " gc=" + std::to_string(GlobalCounter) +
+					" changed=" + std::to_string((int)posChanged) +
+					" step=" + std::to_string((int)Vector3::Distance(newPosition, newItem.Position)) +
+					" frame=" + std::to_string(currentFrame) + " alpha=" + std::to_string(GetInterpolationFactor(false)) + ".",
+					LogLevel::Info);
+			}
 
 			newItem.Position = newPosition;
 			newItem.Translation = newTranslation;
