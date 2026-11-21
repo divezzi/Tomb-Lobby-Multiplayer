@@ -12,6 +12,7 @@
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Multiplayer/RemotePlayer.h"
 #include "Game/Multiplayer/RemoteTargeting.h"
+#include "Game/Multiplayer/VehicleSoundSync.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
 #include "Objects/objectslist.h"
@@ -26,6 +27,7 @@
 #include "Scripting/Internal/TEN/Types/Color/Color.h"
 #include "Scripting/Internal/TEN/Types/Rotation/Rotation.h"
 #include "Scripting/Internal/TEN/Types/Vec3/Vec3.h"
+#include "Sound/sound.h"
 #include "Specific/level.h"
 
 using namespace TEN::Collision::Floordata;
@@ -199,8 +201,30 @@ static std::unique_ptr<Moveable> Create(GAME_OBJECT_ID objID, const std::string&
 	return scriptMov;
 }
 
+// Returns the sounds that the vehicle of the local player played since the last call, four ints per sound (see PopPendingVehicleSounds()).
+static sol::as_table_t<std::vector<int>> PopLocalVehicleSounds()
+{
+	if (!IsRemotePlayerEnabled())
+		return sol::as_table(std::vector<int>{});
+
+	return sol::as_table(PopPendingVehicleSounds());
+}
+
+// Plays a sound of the vehicle of a remote player at a position. The pitch is in percent.
+static void PlayRemoteVehicleSound(int soundID, const Vec3& pos, int pitchPercent, int soundEnv)
+{
+	if (!IsRemotePlayerEnabled())
+		return;
+
+	auto pose = Pose(pos.ToVector3i());
+	SoundEffect(soundID, &pose, (SoundEnvironment)soundEnv, (float)pitchPercent / 100.0f);
+}
+
 void Moveable::Register(sol::state& state, sol::table& parent)
 {
+	parent.set_function("PopLocalVehicleSounds", &PopLocalVehicleSounds);
+	parent.set_function("PlayRemoteVehicleSound", &PlayRemoteVehicleSound);
+
 	// Register type.
 	parent.new_usertype<Moveable>(
 		ScriptReserved_Moveable,
