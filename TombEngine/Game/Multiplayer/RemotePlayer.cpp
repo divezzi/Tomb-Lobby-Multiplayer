@@ -20,6 +20,7 @@
 #include "Game/Setup.h"
 #include "Math/Math.h"
 #include "Scripting/Include/Flow/ScriptInterfaceFlowHandler.h"
+#include "Scripting/Include/Objects/ScriptInterfaceObjectsHandler.h"
 
 namespace TEN::Multiplayer
 {
@@ -142,6 +143,22 @@ namespace TEN::Multiplayer
 		return slotIndex;
 	}
 
+	// Invalidates the Lua handles of a pooled item and frees its script name, so the name can be created again.
+	// The name is freed only when the name map points at this item: a refused duplicate create also ends up here, and the name then belongs to another item. -- divezzi, 21.11.26
+	static void ReleaseRemoteItemScriptName(ItemInfo& item)
+	{
+		if (g_GameScriptEntities == nullptr)
+			return;
+
+		g_GameScriptEntities->NotifyKilled(&item);
+
+		if (item.Name.empty() || g_GameScriptEntities->GetIndexByName(item.Name) != item.Index)
+			return;
+
+		g_GameScriptEntities->RemoveName(item.Name);
+		TENLog("[REMOTE] Freed script name '" + item.Name + "' of pool slot " + std::to_string(item.Index - g_RemoteItemRendererOffset) + ".", LogLevel::Info);
+	}
+
 	void KillRemotePlayer(short slotIndex)
 	{
 		if (slotIndex < 0 || slotIndex >= MAX_REMOTE_ITEMS)
@@ -157,6 +174,10 @@ namespace TEN::Multiplayer
 		s_playerIdToSlot.erase(playerId);
 		ClearRemoteHair(playerId);
 
+		// A free slot keeps the name of its last item, which may belong to someone else now.
+		if (g_RemoteItemsOccupied[slotIndex])
+			ReleaseRemoteItemScriptName(item);
+
 		FreeRemoteItem(slotIndex);
 	}
 
@@ -168,11 +189,26 @@ namespace TEN::Multiplayer
 		for (const auto& [playerId, slotIndex] : s_playerIdToSlot)
 			slotIndices.push_back(slotIndex);
 
+		int occupiedCount = 0;
+		for (bool isOccupied : g_RemoteItemsOccupied)
+			occupiedCount += isOccupied ? 1 : 0;
+
 		for (short slotIndex : slotIndices)
 			KillRemotePlayer(slotIndex);
 
-		// Frees every slot, also those without a registry entry. -- divezzi, 20.11.26
-		std::fill(std::begin(g_RemoteItemsOccupied), std::end(g_RemoteItemsOccupied), false);
+		// Slots without a registry entry go through the same kill, so their script names are freed too. -- divezzi, 21.11.26
+		for (short slotIndex = 0; slotIndex < MAX_REMOTE_ITEMS; slotIndex++)
+		{
+			if (g_RemoteItemsOccupied[slotIndex])
+				KillRemotePlayer(slotIndex);
+		}
+
+		// The registries can hold entries of a previous level, where no slot is occupied.
+		s_remotePlayers.clear();
+		s_playerIdToSlot.clear();
+
+		if (occupiedCount > 0)
+			TENLog("[REMOTE] Cleared the remote item pool: " + std::to_string(occupiedCount) + " occupied slot(s).", LogLevel::Info);
 	}
 
 	LaraInfo& GetRemotePlayerInfo(short rendererIndex)

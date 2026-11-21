@@ -16,6 +16,9 @@ namespace TEN::Multiplayer
 	extern bool									  g_RemoteItemsOccupied[MAX_REMOTE_ITEMS];
 	extern int									  g_RemoteItemRendererOffset;
 
+	// Counts the allocations of each slot, so a log line can tell a new item from the previous one in the same slot.
+	extern int g_RemoteItemSerial[MAX_REMOTE_ITEMS];
+
 	void	  InitializeRemoteItemPool();
 	short	  AllocRemotePlayerItem();
 	void	  FreeRemoteItem(short slotIndex);

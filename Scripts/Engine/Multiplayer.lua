@@ -110,13 +110,15 @@ function Multiplayer.SetPuppetFactory(factory)
     end
 end
 
--- After the engine clears the remote players (the option was switched off) a handle is stale and its slot may belong to another player, so it is dropped without a call. -- divezzi, 20.11.26
+-- When the engine clears the remote players (the option was switched off) it invalidates their handles, and Destroy() on an invalid handle does nothing. -- divezzi, 21.11.26
 local function destroyPuppet(puppet)
-    if not TEN.Flow.IsMultiplayerEnabled() then
-        return true
-    end
-
     return pcall(puppetFactory.Destroy, puppet)
+end
+
+-- True when the handle of a puppet was invalidated by the engine, for example when the pool was cleared while no script frame ran. A custom puppet without GetValid() counts as valid. -- divezzi, 21.11.26
+local function isPuppetInvalid(puppet)
+    local ok, isValid = pcall(function() return puppet:GetValid() end)
+    return ok and isValid == false
 end
 
 local function initState()
@@ -1294,10 +1296,6 @@ local levelReqSuffix = ""
         customSuffix .. jlSuffix .. nameSuffix .. lvlSuffix .. levelReqSuffix .. soundSuffix .. vehicleSoundSuffix .. aimSuffix .. lookSuffix .. holsterSuffix .. sourceSuffix .. hpSuffix .. flmSuffix .. fireSuffix .. pvpSuffix .. roomSuffix .. typingSuffix .. hitSuffix .. vehReqSuffix .. vehAllowSuffix .. chatSuffix .. broadcastSuffix .. pauseSuffix
     )
 
-    if DEBUG and state.frameCounter % 300 == 0 then
-        print("[Multiplayer SEND] " .. msg:sub(1, 100))
-    end
-
     local okSend, sendErr = pcall(function() return state.client:send(msg) end)
     if not okSend then
         print('[Multiplayer] Send failed: ' .. tostring(sendErr))
@@ -1579,6 +1577,13 @@ pcall(function()
     end
 
     local double = state.remotePlayers[id]
+    if double and isPuppetInvalid(double) then
+        print("[REMOTE] The puppet of player " .. id .. " was invalidated by the engine, it is created again.")
+        state.remotePlayers[id] = nil
+        nameSetDirty = true
+        double = nil
+    end
+
     if not double then
         local lastFail = state.spawnFailFrame[id] or 0
         if (state.frameCounter - lastFail) < SPAWN_RETRY_INTERVAL then
@@ -2097,9 +2102,6 @@ local function receive(customMessageHandler)
         if data then
             msgCount = msgCount + 1
             data = data:gsub("[\r\n]+$", "")
-            if DEBUG and msgCount == 1 and state.frameCounter % 300 == 0 then
-                print("[Multiplayer RECV] " .. data:sub(1, 100))
-            end
             if #data > 0 then
                 local ok, processErr = pcall(processMessage, data, customMessageHandler)
                 if not ok then

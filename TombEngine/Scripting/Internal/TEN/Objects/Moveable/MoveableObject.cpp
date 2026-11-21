@@ -60,9 +60,17 @@ static std::unique_ptr<Moveable> CreateRemotePlayerMoveable(const std::string& n
 		return nullptr;
 	}
 
-	if (g_GameScriptEntities->GetIndexByName(name) != NO_VALUE)
+	int holderIndex = g_GameScriptEntities->GetIndexByName(name);
+	if (holderIndex != NO_VALUE)
 	{
-		TENLog("[REMOTE] Can't create remote player with name '" + name + "': name is already in use.", LogLevel::Error);
+		auto holder = std::string("level item " + std::to_string(holderIndex));
+		if (holderIndex >= g_RemoteItemRendererOffset)
+		{
+			holder = "pool slot " + std::to_string(holderIndex - g_RemoteItemRendererOffset) +
+				(GetItemByRendererIndex(holderIndex) != nullptr ? " (occupied)" : " (free, stale name)");
+		}
+
+		TENLog("[REMOTE] Can't create remote player with name '" + name + "': name is already in use by " + holder + ".", LogLevel::Error);
 		return nullptr;
 	}
 

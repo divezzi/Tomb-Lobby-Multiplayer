@@ -12,6 +12,7 @@ namespace TEN::Multiplayer
 	std::array<ItemInfo, MAX_REMOTE_ITEMS> g_RemoteItems;
 	bool								   g_RemoteItemsOccupied[MAX_REMOTE_ITEMS] = {};
 	int									   g_RemoteItemRendererOffset = 0;
+	int									   g_RemoteItemSerial[MAX_REMOTE_ITEMS] = {};
 
 	void InitializeRemoteItemPool()
 	{
@@ -35,6 +36,7 @@ namespace TEN::Multiplayer
 				g_RemoteItemsOccupied[i] = true;
 				g_RemoteItems[i] = ItemInfo{};
 				g_RemoteItems[i].Index = g_RemoteItemRendererOffset + i;
+				g_RemoteItemSerial[i]++;
 				return i;
 			}
 		}

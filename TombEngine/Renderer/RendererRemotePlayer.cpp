@@ -104,11 +104,17 @@ namespace TEN::Renderer
 			if (item->RoomNumber == NO_VALUE || item->RoomNumber >= (short)_rooms.size())
 				continue;
 
-			static bool isFirstDrawLogged[MAX_REMOTE_PLAYERS] = {};
-			if (!isFirstDrawLogged[i])
+			// Logged once per allocation, so a player that comes back to the same slot is visible in the log.
+			static int lastDrawnSerial[MAX_REMOTE_PLAYERS] = {};
+			static int lastLoggedRoom[MAX_REMOTE_PLAYERS] = {};
+			if (lastDrawnSerial[i] != g_RemoteItemSerial[i])
 			{
-				isFirstDrawLogged[i] = true;
-				TENLog("[REMOTE] First draw of slot " + std::to_string(i) + ", renderer index " + std::to_string(rendererIndex) + ".", LogLevel::Info);
+				lastDrawnSerial[i] = g_RemoteItemSerial[i];
+				lastLoggedRoom[i] = 0;
+				TENLog(
+					"[REMOTE] Draw started: slot " + std::to_string(i) + ", renderer index " + std::to_string(rendererIndex) +
+					", allocation " + std::to_string(g_RemoteItemSerial[i]) + ", name '" + item->Name + "'.",
+					LogLevel::Info);
 			}
 
 			auto& newItem = _items[rendererIndex];
@@ -207,7 +213,6 @@ namespace TEN::Renderer
 			CollectLightsForItem(&newItem);
 
 			// Logged when the room changes, to check the lighting that reaches the remote player. -- divezzi, 20.11.26
-			static int lastLoggedRoom[MAX_REMOTE_PLAYERS] = {};
 			if (lastLoggedRoom[i] != item->RoomNumber + 1)
 			{
 				lastLoggedRoom[i] = item->RoomNumber + 1;
