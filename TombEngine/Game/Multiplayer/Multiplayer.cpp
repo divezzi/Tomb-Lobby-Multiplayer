@@ -6,7 +6,7 @@
 
 namespace TEN::Multiplayer
 {
-	bool IsRemotePlayersEnabled()
+	bool IsRemotePlayerEnabled()
 	{
 		return (g_GameFlow->IsMultiplayerEnabled() && g_Configuration.EnableMultiplayer);
 	}

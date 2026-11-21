@@ -23,7 +23,7 @@ namespace TEN::Multiplayer
 
 	short AllocRemotePlayerItem()
 	{
-		if (!IsRemotePlayersEnabled())
+		if (!IsRemotePlayerEnabled())
 		{
 			TENLog("[REMOTE] Cannot allocate a remote player: multiplayer is disabled.", LogLevel::Warning);
 			return NO_VALUE;

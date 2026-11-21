@@ -79,7 +79,7 @@ namespace TEN::Renderer
 	{
 		s_remotePlayersToDraw.clear();
 
-		if (!IsRemotePlayersEnabled())
+		if (!IsRemotePlayerEnabled())
 			return;
 
 		if (!_moveableObjects[ID_LARA].has_value())

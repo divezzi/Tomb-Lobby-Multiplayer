@@ -107,7 +107,7 @@ True only while the gameflow allows multiplayer and the player has it switched o
 @function IsMultiplayerEnabled
 @treturn bool True if multiplayer is in effect.
 */
-	tableFlow.set_function(ScriptReserved_IsMultiplayerEnabled, []() { return TEN::Multiplayer::IsRemotePlayersEnabled(); });
+	tableFlow.set_function(ScriptReserved_IsMultiplayerEnabled, []() { return TEN::Multiplayer::IsRemotePlayerEnabled(); });
 
 /*** Enable or disable level selection in title flyby.
 Must be true or false

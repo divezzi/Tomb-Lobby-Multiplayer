@@ -39,7 +39,7 @@ namespace TEN::Multiplayer
 	{
 		auto targets = std::vector<ItemInfo*>{};
 
-		if (!IsRemotePlayersEnabled() || s_targetablePlayerIds.empty())
+		if (!IsRemotePlayerEnabled() || s_targetablePlayerIds.empty())
 			return targets;
 
 		for (int i = 0; i < MAX_REMOTE_PLAYERS; i++)

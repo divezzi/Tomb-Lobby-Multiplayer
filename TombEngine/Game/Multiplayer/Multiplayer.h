@@ -2,5 +2,5 @@
 
 namespace TEN::Multiplayer
 {
-	bool IsRemotePlayersEnabled();
+	bool IsRemotePlayerEnabled();
 }

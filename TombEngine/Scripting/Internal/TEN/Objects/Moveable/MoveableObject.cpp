@@ -121,7 +121,7 @@ static std::unique_ptr<Moveable> Create(GAME_OBJECT_ID objID, const std::string&
 	if (IsRemotePlayerRequest(objID, name))
 	{
 		// A request for a remote player must never fall through to a level item of the stock slot. -- divezzi, 20.11.26
-		if (!IsRemotePlayersEnabled())
+		if (!IsRemotePlayerEnabled())
 		{
 			TENLog("[REMOTE] Can't create remote player '" + name + "': multiplayer is not enabled (gameflow flag, or the option in Options > Multiplayer).", LogLevel::Warning);
 			return nullptr;

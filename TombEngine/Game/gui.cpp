@@ -1508,14 +1508,14 @@ namespace TEN::Gui
 		{
 			if (SelectedOption == MultiplayerSettingsOption::Apply || GuiIsDeselected())
 			{
-				bool wasEnabled = TEN::Multiplayer::IsRemotePlayersEnabled();
+				bool wasEnabled = TEN::Multiplayer::IsRemotePlayerEnabled();
 
 				// Save the configuration.
 				g_Configuration = CurrentSettings.Configuration;
 				SaveConfiguration();
 
 				// Switching it off removes the remote players at once, without a level reload.
-				if (wasEnabled && !TEN::Multiplayer::IsRemotePlayersEnabled())
+				if (wasEnabled && !TEN::Multiplayer::IsRemotePlayerEnabled())
 					TEN::Multiplayer::ClearAllRemoteItems();
 			}
 			else if (SelectedOption != MultiplayerSettingsOption::Cancel)

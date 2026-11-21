@@ -235,7 +235,7 @@ namespace TEN::Multiplayer
 		using namespace TEN::Animation;
 		using namespace TEN::Effects::Light;
 
-		if (!IsRemotePlayersEnabled())
+		if (!IsRemotePlayerEnabled())
 			return;
 
 		// The muzzle light is a detail of the near view: it fades out with the distance to the camera and is half as strong as the local one. -- divezzi, 20.11.26
