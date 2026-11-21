@@ -11,6 +11,7 @@
 #include "Game/Lara/lara.h"
 #include "Game/Lara/lara_struct.h"
 #include "Game/Multiplayer/Multiplayer.h"
+#include "Game/Multiplayer/RemoteHair.h"
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
@@ -73,6 +74,7 @@ namespace TEN::Multiplayer
 		s_remotePlayers[playerId] = {};
 		s_remotePlayers[playerId].Control.Weapon.WeaponItem = NO_VALUE;
 		s_playerIdToSlot[playerId] = slotIndex;
+		InitializeRemoteHair(playerId);
 
 		item.Animation.AnimNumber = 0;
 		item.Animation.FrameNumber = 0;
@@ -145,6 +147,7 @@ namespace TEN::Multiplayer
 		item.Active = false;
 		s_remotePlayers.erase(playerId);
 		s_playerIdToSlot.erase(playerId);
+		ClearRemoteHair(playerId);
 
 		FreeRemoteItem(slotIndex);
 	}

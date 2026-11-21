@@ -471,6 +471,8 @@ namespace TEN::Renderer
 		void DrawRemotePlayer(RenderView& view, RendererItem* itemToDraw, LaraInfo& remoteInfo, RendererPass rendererPass);
 		void DrawRemotePlayerHolsters(RendererItem* itemToDraw, RenderView& view, LaraInfo& remoteInfo, RendererPass rendererPass);
 		void DrawRemotePlayerJoints(RendererItem* itemToDraw, RenderView& view, RendererPass rendererPass);
+		void DrawRemotePlayerHair(RendererItem* itemToDraw, RenderView& view, RendererPass rendererPass);
+		void DrawRemotePlayerHairSorted(RendererSortableObject* objectInfo, RendererObjectType lastObjectType, RenderView& view, int index, int baseIndex, int count);
 		void UpdateRemotePlayerAnimations(ItemInfo* item, LaraInfo& remoteInfo);
 		void DrawMesh(RendererItem* itemToDraw, RendererMesh* mesh, RendererObjectType type, int boneIndex, bool skinned, RenderView& view, RendererPass rendererPass);
 		void PrepareSimpleParticles(RenderView& view);
@@ -805,6 +807,7 @@ namespace TEN::Renderer
 		std::optional<std::pair<Vector2, Vector2>> GetDisplayItemBounds(const DisplayItem& item) const;
 		Vector3	   GetMoveableBonePosition(int itemNumber, int boneID, const Vector3& relOffset = Vector3::Zero);
 		Quaternion GetMoveableBoneOrientation(int itemNumber, int boneID);
+		bool	   GetRemotePlayerBoneMatrix(int rendererIndex, int jointIndex, Matrix* outMatrix);
 
 		void AddDisplaySprite(const RendererSprite& sprite, const Vector2& pos2D, short orient, const Vector2& size, const Vector4& color,
 			int priority, BlendMode blendMode, const Vector2& aspectCorrection, RenderView& renderView);

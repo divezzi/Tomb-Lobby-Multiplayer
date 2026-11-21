@@ -6,16 +6,19 @@
 #include <vector>
 
 #include "Game/Animation/Animation.h"
+#include "Game/control/control.h"
 #include "Game/debug/debug.h"
 #include "Game/items.h"
 #include "Game/Lara/lara_fire.h"
 #include "Game/Lara/lara_struct.h"
 #include "Game/Lara/lara_tests.h"
 #include "Game/Multiplayer/Multiplayer.h"
+#include "Game/Multiplayer/RemoteHair.h"
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Multiplayer/RemotePlayer.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
+#include "Scripting/Include/Flow/ScriptInterfaceFlowHandler.h"
 #include "Specific/level.h"
 
 using namespace TEN::Animation;
@@ -155,11 +158,15 @@ namespace TEN::Renderer
 			}
 
 			int currentFrame = item->Animation.FrameNumber;
-			if (currentFrame != frameData.CurrentReceivedFrameNumber)
+			bool isFrameAdvanced = (currentFrame != frameData.CurrentReceivedFrameNumber);
+			if (isFrameAdvanced)
 			{
 				frameData.PrevReceivedFrameNumber = frameData.CurrentReceivedFrameNumber;
 				frameData.CurrentReceivedFrameNumber = currentFrame;
 			}
+
+			// The hair steps once per update of the remote player (snap, new position or new frame), not once per rendered frame.
+			bool isHairStep = (forceSnap || posJumped || posChanged || isFrameAdvanced);
 
 			newItem.Position = newPosition;
 			newItem.Translation = newTranslation;
@@ -184,6 +191,10 @@ namespace TEN::Renderer
 				newItem.DoneAnimations = false;
 				UpdateRemotePlayerAnimations(item, remoteInfo);
 				item->Animation.FrameNumber = currentFrame;
+
+				// The hair reads the head bone, so it steps right after the animations. -- divezzi, 20.11.26
+				if (isHairStep)
+					GetRemoteHairController(*item).Update(*item, remoteInfo);
 			}
 			catch (const std::exception& ex)
 			{
@@ -473,6 +484,23 @@ namespace TEN::Renderer
 			DrawRemotePlayerJoints(itemToDraw, view, rendererPass);
 
 		DrawRemotePlayerHolsters(itemToDraw, view, remoteInfo, rendererPass);
+		DrawRemotePlayerHair(itemToDraw, view, rendererPass);
+	}
+
+	bool Renderer::GetRemotePlayerBoneMatrix(int rendererIndex, int jointIndex, Matrix* outMatrix)
+	{
+		if (rendererIndex < 0 || rendererIndex >= (int)_items.size())
+			return false;
+
+		const auto& rendererItem = _items[rendererIndex];
+		if (!rendererItem.DoneAnimations)
+			return false;
+
+		if (jointIndex >= BONE_COUNT_MAX)
+			jointIndex = 0;
+
+		*outMatrix = rendererItem.AnimationTransforms[jointIndex] * rendererItem.World;
+		return true;
 	}
 
 	void Renderer::DrawRemotePlayerHolsters(RendererItem* itemToDraw, RenderView& view, LaraInfo& remoteInfo, RendererPass rendererPass)
@@ -508,5 +536,161 @@ namespace TEN::Renderer
 		auto& skinJoints = *_moveableObjects[ID_LARA_SKIN_JOINTS];
 		for (int k = 1; k < skinJoints.ObjectMeshes.size(); k++)
 			DrawMesh(itemToDraw, skinJoints.ObjectMeshes[k], RendererObjectType::Moveable, k, false, view, rendererPass);
+	}
+
+	void Renderer::DrawRemotePlayerHair(RendererItem* itemToDraw, RenderView& view, RendererPass rendererPass)
+	{
+		const auto* nativeItem = GetItemByRendererIndex(itemToDraw->ItemNumber);
+		if (nativeItem == nullptr)
+			return;
+
+		bool forceValue = (g_GameFlow->CurrentFreezeMode == FreezeMode::Player);
+
+		auto& hairController = GetRemoteHairController(*nativeItem);
+
+		for (int i = 0; i < hairController.Units.size(); i++)
+		{
+			auto& unit = hairController.Units[i];
+			if (!unit.IsEnabled)
+				continue;
+
+			// A unit that has not had a valid anchor yet would be drawn at the world origin.
+			if (!unit.IsInitialized)
+				continue;
+
+			const auto& object = Objects[unit.ObjectID];
+			if (!object.loaded)
+				continue;
+
+			bool skinned = (object.skinIndex != NO_VALUE && g_GameFlow->GetSettings()->Graphics.Skinning);
+			bool flipped = (skinned || GetJointOffset(unit.ObjectID, 1, false).z < 0.0f);
+			auto objectType = i ? RendererObjectType::RemoteHairSecondary : RendererObjectType::RemoteHairPrimary;
+
+			const auto& rendererObject = *_moveableObjects[unit.ObjectID];
+
+			_stObjects.Objects[0].World = Matrix::Identity;
+			_stObjects.Bones[0] = itemToDraw->InterpolatedAnimationTransforms[RemoteHairUnit::GetRootMeshID(i)] * itemToDraw->InterpolatedWorld;
+			_stObjects.Skinned = (int)(skinned ? SkinningMode::Full : SkinningMode::None);
+
+			ReflectMatrixOptionally(_stObjects.Bones[0]);
+
+			for (int j = 0; j < unit.Segments.size(); j++)
+			{
+				auto& segment = unit.Segments[j];
+
+				if ((segment.Position - segment.PrevPosition).Length() > CLICK(2))
+					segment.StoreInterpolationData();
+
+				auto worldMatrix =
+					Matrix::CreateFromQuaternion(
+						Quaternion::Lerp(segment.PrevOrientation, segment.Orientation, GetInterpolationFactor(forceValue))) *
+					Matrix::CreateTranslation(
+						Vector3::Lerp(segment.PrevPosition, segment.Position, GetInterpolationFactor(forceValue)));
+
+				if (flipped)
+					worldMatrix = Matrix::CreateRotationY(PI) * worldMatrix;
+
+				ReflectMatrixOptionally(worldMatrix);
+				_stObjects.Bones[j + 1] = segment.GlobalTransform = worldMatrix;
+
+				_stObjects.BoneLightModes[j] = (int)LightMode::Dynamic;
+			}
+
+			UpdateConstantBuffer(&_stObjects, _cbObjects.get(), GetObjectsBufferPrefixSize(1));
+
+			if (skinned)
+			{
+				DrawMesh(itemToDraw, GetMesh(object.skinIndex), objectType, 0, true, view, rendererPass);
+			}
+			else
+			{
+				for (int j = 0; j < rendererObject.ObjectMeshes.size(); j++)
+				{
+					auto& rendererMesh = *rendererObject.ObjectMeshes[j];
+					DrawMesh(itemToDraw, &rendererMesh, objectType, j, false, view, rendererPass);
+				}
+			}
+		}
+	}
+
+	void Renderer::DrawRemotePlayerHairSorted(RendererSortableObject* objectInfo, RendererObjectType lastObjectType, RenderView& view, int index, int baseIndex, int count)
+	{
+		const auto* nativeItem = GetItemByRendererIndex(objectInfo->Item->ItemNumber);
+		if (nativeItem == nullptr)
+			return;
+
+		auto& hairController = GetRemoteHairController(*nativeItem);
+
+		if (index >= (int)hairController.Units.size())
+		{
+			TENLog("[REMOTE] Attempt to draw a nonexistent hair unit.", LogLevel::Warning);
+			return;
+		}
+
+		if (!hairController.Units[index].IsInitialized)
+			return;
+
+		if (lastObjectType != objectInfo->ObjectType)
+		{
+			_graphicsDevice->BindVertexBuffer(_moveablesVertexBuffer.get());
+			_graphicsDevice->SetPrimitiveType(PrimitiveType::TriangleList);
+			_graphicsDevice->SetInputLayout(_vertexInputLayout.get());
+
+			SetDepthState(DepthState::Read);
+			SetCullMode(CullMode::CounterClockwise);
+
+			_shaders.Bind(Shader::Items);
+		}
+
+		// The objects buffer is rebuilt only when the hair unit changes. The object type tells the primary and secondary units of one item apart.
+		if (_lastSortedObjectType != objectInfo->ObjectType ||
+			_lastSortedObject != objectInfo->Item ||
+			_lastSortedSkinned != objectInfo->Skinned)
+		{
+			_stObjects.Objects[0].World = Matrix::Identity;
+			_stObjects.Objects[0].Color = objectInfo->Item->Color;
+			_stObjects.Objects[0].AmbientLight = objectInfo->Item->AmbientLight;
+			_stObjects.Skinned = (int)(objectInfo->Skinned ? SkinningMode::Full : SkinningMode::None);
+
+			const auto& moveableObj = *_moveableObjects[(int)GAME_OBJECT_ID::ID_HAIR_PRIMARY + index];
+
+			_stObjects.Bones[0] = objectInfo->Item->InterpolatedAnimationTransforms[RemoteHairUnit::GetRootMeshID(index)] * objectInfo->Item->InterpolatedWorld;
+			ReflectMatrixOptionally(_stObjects.Bones[0]);
+
+			for (int i = 0; i < hairController.Units[index].Segments.size(); i++)
+			{
+				const auto& segment = hairController.Units[index].Segments[i];
+				auto worldMatrix = segment.GlobalTransform;
+
+				ReflectMatrixOptionally(worldMatrix);
+
+				_stObjects.Bones[i + 1] = worldMatrix;
+				_stObjects.BoneLightModes[i] = (int)LightMode::Dynamic;
+			}
+
+			for (int k = 0; k < moveableObj.ObjectMeshes.size(); k++)
+				_stObjects.BoneLightModes[k] = (int)moveableObj.ObjectMeshes[k]->LightMode;
+
+			bool acceptsShadows = moveableObj.ShadowType == ShadowMode::None;
+			BindMoveableLights(objectInfo->Item->LightsToDraw, objectInfo->Item->RoomNumber, objectInfo->Item->PrevRoomNumber, objectInfo->Item->LightFade, acceptsShadows);
+
+			// Only Objects[0] is used, so upload just the prefix of the buffer.
+			UpdateConstantBuffer(&_stObjects, _cbObjects.get(), GetObjectsBufferPrefixSize(1));
+
+			_lastSortedObjectType = objectInfo->ObjectType;
+			_lastSortedObject = objectInfo->Item;
+			_lastSortedSkinned = objectInfo->Skinned;
+		}
+
+		SetBlendMode(objectInfo->BlendMode);
+		SetAlphaTest(AlphaTestMode::None, ALPHA_TEST_THRESHOLD);
+
+		BindBucketTextures(*objectInfo->Bucket, TextureSource::Moveables, objectInfo->Bucket->Animated);
+		BindMaterial(objectInfo->Bucket->MaterialIndex, false);
+
+		DrawIndexedTriangles(count, baseIndex, 0);
+
+		_numSortedMoveablesDrawCalls++;
+		_numSortedTriangles += count / 3;
 	}
 }
