@@ -11,6 +11,7 @@
 #include "Game/Lara/lara_helpers.h"
 #include "Game/Lara/lara_struct.h"
 #include "Game/Lara/ModernControls.h"
+#include "Game/Multiplayer/Multiplayer.h"
 #include "Game/savegame.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
@@ -163,6 +164,7 @@ static void AnimateWeapon(ItemInfo& laraItem, LaraWeaponType weaponType, bool& h
 						{
 							SoundEffect(SFX_TR4_EXPLOSION1, &laraItem.Pose, SoundEnvironment::Land, 0.9f, 0.3f);
 							SoundEffect(weapon.SampleNum, &laraItem.Pose);
+							TEN::Multiplayer::NotifyLaraSound(laraItem, weapon.SampleNum, laraItem.Animation.FrameNumber);
 							hasFired = true;
 						}
 
@@ -258,6 +260,7 @@ static int AnimateWeaponUndraw(ItemInfo& laraItem, LaraWeaponType weaponType, bo
 		{
 			UndrawPistolMesh(laraItem, weaponType, isRightWeapon);
 			SoundEffect(SFX_TR4_LARA_HOLSTER, &laraItem.Pose);
+			TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_LARA_HOLSTER, laraItem.Animation.FrameNumber);
 		}
 	}
 
@@ -346,6 +349,7 @@ void DrawPistols(ItemInfo& laraItem, LaraWeaponType weaponType)
 	{
 		DrawPistolMeshes(laraItem, weaponType);
 		SoundEffect(SFX_TR4_LARA_DRAW, &laraItem.Pose);
+		TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_LARA_DRAW, laraItem.Animation.FrameNumber);
 	}
 	else if (frame == (weaponAnimData.RecoilAnim - 1))
 	{

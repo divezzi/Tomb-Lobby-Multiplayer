@@ -26,6 +26,7 @@
 #include "Game/Lara/lara_two_guns.h"
 #include "Game/Lara/ModernControls.h"
 #include "Game/misc.h"
+#include "Game/Multiplayer/Multiplayer.h"
 #include "Game/savegame.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
@@ -225,6 +226,7 @@ void AnimateShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 
 							SoundEffect(SFX_TR4_EXPLOSION1, &laraItem.Pose, SoundEnvironment::Land, 1.0f, 0.4f);
 							SoundEffect(SFX_TR4_HK_FIRE, &laraItem.Pose);
+							TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_HK_FIRE, laraItem.Animation.FrameNumber);
 						}
 
 						break;
@@ -250,6 +252,7 @@ void AnimateShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 		else if (weaponType == LaraWeaponType::HK && player.Control.Weapon.Timer != 0.0f)
 		{
 			SoundEffect(SFX_TR4_HK_FIRE, &laraItem.Pose);
+			TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_HK_FIRE, laraItem.Animation.FrameNumber);
 		}
 		else if (weaponType == LaraWeaponType::Shotgun && !Modern::IsGrabHeld() && !player.LeftArm.Locked)
 		{
@@ -305,6 +308,7 @@ void AnimateShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 
 							SoundEffect(SFX_TR4_EXPLOSION1, &laraItem.Pose, SoundEnvironment::Land, 1.0f, 0.4f);
 							SoundEffect(SFX_TR4_HK_FIRE, &laraItem.Pose);
+							TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_HK_FIRE, laraItem.Animation.FrameNumber);
 						}
 
 						break;
@@ -330,6 +334,7 @@ void AnimateShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 		else if (weaponType == LaraWeaponType::HK && player.Control.Weapon.Timer != 0.0f)
 		{
 			SoundEffect(SFX_TR4_HK_FIRE, &laraItem.Pose);
+			TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_HK_FIRE, laraItem.Animation.FrameNumber);
 		}
 
 		break;
@@ -440,6 +445,7 @@ bool FireShotgun(ItemInfo& laraItem)
 
 		SoundEffect(SFX_TR4_EXPLOSION1, &laraItem.Pose, TestEnvironment(ENV_FLAG_WATER, &laraItem) ? SoundEnvironment::Underwater : SoundEnvironment::Land);
 		SoundEffect(Weapons[(int)LaraWeaponType::Shotgun].SampleNum, &laraItem.Pose);
+		TEN::Multiplayer::NotifyLaraSound(laraItem, Weapons[(int)LaraWeaponType::Shotgun].SampleNum, laraItem.Animation.FrameNumber);
 
 		Rumble(0.5f, 0.2f);
 	}
@@ -504,6 +510,7 @@ void DrawShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 		if (weaponItemPtr->Animation.FrameNumber == Weapons[(int)weaponType].DrawFrame)
 		{
 			DrawShotgunMeshes(laraItem, weaponType);
+			TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_LARA_DRAW, laraItem.Animation.FrameNumber);
 		}
 		else if (player.Control.WaterStatus == WaterStatus::Underwater)
 		{
@@ -567,6 +574,7 @@ void UndrawShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 			(weaponType == LaraWeaponType::GrenadeLauncher && item.Animation.FrameNumber == 15))
 		{
 			UndrawShotgunMeshes(laraItem, weaponType);
+			TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_LARA_HOLSTER, laraItem.Animation.FrameNumber);
 		}
 	}
 
@@ -679,6 +687,11 @@ bool FireHarpoon(ItemInfo& laraItem, const std::optional<Pose>& pose)
 
 	AddActiveItem(itemNumber);
 	harpoonItem.ItemFlags[0] = (int)ProjectileType::Harpoon;
+
+	TEN::Multiplayer::NotifyLaraSound(
+		laraItem,
+		TestEnvironment(ENV_FLAG_WATER, &laraItem) ? SFX_TR4_HARPOON_FIRE_UNDERWATER : SFX_TR4_HARPOON_FIRE_DRY,
+		laraItem.Animation.FrameNumber);
 
 	Rumble(0.2f, 0.1f);
 
@@ -811,6 +824,8 @@ bool FireGrenade(ItemInfo& laraItem)
 	default:
 		break;
 	}
+
+	TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_GRENADEGUN_FIRE, laraItem.Animation.FrameNumber);
 
 	return true;
 }
@@ -980,6 +995,7 @@ bool FireRocket(ItemInfo& laraItem)
 
 	Rumble(0.4f, 0.3f);
 	SoundEffect(SFX_TR4_EXPLOSION1, &laraItem.Pose);
+	TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_EXPLOSION1, laraItem.Animation.FrameNumber);
 
 	return true;
 }
@@ -1131,6 +1147,7 @@ bool FireCrossbow(ItemInfo& laraItem, const std::optional<Pose>& pose)
 
 	Rumble(0.2f, 0.1f);
 	SoundEffect(SFX_TR4_CROSSBOW_FIRE, &laraItem.Pose);
+	TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_CROSSBOW_FIRE, laraItem.Animation.FrameNumber);
 
 	return true;
 }
