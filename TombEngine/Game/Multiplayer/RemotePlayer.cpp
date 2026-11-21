@@ -15,6 +15,7 @@
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
+#include "Scripting/Include/Flow/ScriptInterfaceFlowHandler.h"
 
 namespace TEN::Multiplayer
 {
@@ -50,7 +51,8 @@ namespace TEN::Multiplayer
 
 	void InitializeRemotePlayerObject()
 	{
-		if (!IsRemotePlayersEnabled())
+		// Only the gameflow decides here: the slot is set up at level load, and the user option can change afterwards. -- divezzi, 20.11.26
+		if (!g_GameFlow->IsMultiplayerEnabled())
 			return;
 
 		auto& object = Objects[ID_REMOTE_PLAYER];

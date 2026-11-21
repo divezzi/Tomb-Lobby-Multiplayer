@@ -2,11 +2,12 @@
 #include "Game/Multiplayer/Multiplayer.h"
 
 #include "Scripting/Include/Flow/ScriptInterfaceFlowHandler.h"
+#include "Specific/configuration.h"
 
 namespace TEN::Multiplayer
 {
 	bool IsRemotePlayersEnabled()
 	{
-		return g_GameFlow->IsMultiplayerEnabled();
+		return (g_GameFlow->IsMultiplayerEnabled() && g_Configuration.EnableMultiplayer);
 	}
 }

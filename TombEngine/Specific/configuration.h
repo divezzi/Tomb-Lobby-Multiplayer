@@ -79,6 +79,9 @@ struct GameConfiguration
 	bool EnableGrabToggle				= true;
 	bool EnableSmoothSprintSteps		= true;
 
+	// Multiplayer: the user switch. Remote players also need the gameflow to allow them. -- divezzi, 20.11.26
+	bool EnableMultiplayer				= false;
+
 	// Input
 	int					  MouseSensitivity		= DEFAULT_MOUSE_SENSITIVITY;
 	MenuOptionLoopingMode MenuOptionLoopingMode = MenuOptionLoopingMode::SaveLoadOnly;

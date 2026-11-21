@@ -99,6 +99,7 @@
 #define STRING_TOGGLE_CROUCH			"toggle_crouch"
 #define STRING_TOGGLE_GRAB				"toggle_grab"
 #define STRING_SMOOTH_SPRINT_STEPS		"smooth_sprint_steps"
+#define STRING_MULTIPLAYER				"multiplayer"
 #define STRING_SUBTITLES				"subtitles"
 #define STRING_MENU_OPT_LOOP			"menu_option_looping"
 #define STRING_MENU_OPT_LOOP_ALL_MENUS	"menu_option_looping_all_menus"

@@ -6,6 +6,7 @@
 #include "Game/gui.h"
 #include "Game/Lara/lara_fire.h"
 #include "Game/Lara/ModernControls.h"
+#include "Game/Multiplayer/Multiplayer.h"
 #include "Game/pickup/pickup_ammo.h"
 #include "Game/pickup/pickup_consumable.h"
 #include "Game/savegame.h"
@@ -100,6 +101,13 @@ Disabled by default. Remote players can only be created while this is enabled.
 @tparam bool enabled True or false.
 */
 	tableFlow.set_function(ScriptReserved_EnableMultiplayer, &FlowHandler::EnableMultiplayer, this);
+
+/*** Check if remote players can be created now.
+True only while the gameflow allows multiplayer and the player has it switched on in the options.
+@function IsMultiplayerEnabled
+@treturn bool True if multiplayer is in effect.
+*/
+	tableFlow.set_function(ScriptReserved_IsMultiplayerEnabled, []() { return TEN::Multiplayer::IsRemotePlayersEnabled(); });
 
 /*** Enable or disable level selection in title flyby.
 Must be true or false

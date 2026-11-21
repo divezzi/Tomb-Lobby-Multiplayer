@@ -13,6 +13,8 @@
 #include "Game/Lara/Optics.h"
 #include "Game/Lara/lara_one_gun.h"
 #include "Game/Lara/lara_two_guns.h"
+#include "Game/Multiplayer/Multiplayer.h"
+#include "Game/Multiplayer/RemotePlayer.h"
 #include "Game/pickup/pickup.h"
 #include "Game/savegame.h"
 #include "Game/spotcam.h"
@@ -407,7 +409,7 @@ namespace TEN::Gui
 
 		constexpr auto TITLE_OPTION_COUNT	  = TitleOption::Count - 1;
 		constexpr auto LOAD_GAME_OPTION_COUNT = SAVEGAME_MAX - 1;
-		constexpr auto OPTION_OPTION_COUNT	  = 3;
+		constexpr auto OPTION_OPTION_COUNT	  = 4;
 
 		static int selectedOptionBackup;
 		auto inventoryResult = InventoryResult::None;
@@ -463,6 +465,10 @@ namespace TEN::Gui
 
 		case Menu::Sound:
 			HandleSoundSettingsInput(false);
+			return inventoryResult;
+
+		case Menu::Multiplayer:
+			HandleMultiplayerSettingsInput();
 			return inventoryResult;
 		}
 
@@ -1096,7 +1102,8 @@ namespace TEN::Gui
 			Gameplay,
 			Controls,
 			Display,
-			Sound
+			Sound,
+			Multiplayer
 		};
 
 		switch (SelectedOption)
@@ -1122,6 +1129,12 @@ namespace TEN::Gui
 		case OptionsOption::Sound:
 			FillSoundOptions();
 			MenuToDisplay = Menu::Sound;
+			SelectedOption = 0;
+			break;
+
+		case OptionsOption::Multiplayer:
+			BackupOptions();
+			MenuToDisplay = Menu::Multiplayer;
 			SelectedOption = 0;
 			break;
 		}
@@ -1466,6 +1479,57 @@ namespace TEN::Gui
 		}
 	}
 
+	void GuiController::HandleMultiplayerSettingsInput()
+	{
+		enum MultiplayerSettingsOption
+		{
+			EnableMultiplayer,
+
+			Apply,
+			Cancel,
+
+			Count
+		};
+
+		OptionCount = (int)MultiplayerSettingsOption::Count - 1;
+
+		// The switch has no effect while the gameflow does not allow multiplayer. -- divezzi, 20.11.26
+		if ((GuiIsPulsed(In::MenuLeft) || GuiIsPulsed(In::MenuRight)) &&
+			SelectedOption == MultiplayerSettingsOption::EnableMultiplayer &&
+			g_GameFlow->IsMultiplayerEnabled())
+		{
+			SoundEffect(SFX_TR4_MENU_CHOOSE, nullptr, SoundEnvironment::Always);
+			CurrentSettings.Configuration.EnableMultiplayer = !CurrentSettings.Configuration.EnableMultiplayer;
+		}
+
+		SelectedOption = GetLoopedSelectedOption(SelectedOption, OptionCount, g_Configuration.MenuOptionLoopingMode == MenuOptionLoopingMode::AllMenus);
+
+		if (GuiIsSelected() || GuiIsDeselected())
+		{
+			if (SelectedOption == MultiplayerSettingsOption::Apply || GuiIsDeselected())
+			{
+				bool wasEnabled = TEN::Multiplayer::IsRemotePlayersEnabled();
+
+				// Save the configuration.
+				g_Configuration = CurrentSettings.Configuration;
+				SaveConfiguration();
+
+				// Switching it off removes the remote players at once, without a level reload.
+				if (wasEnabled && !TEN::Multiplayer::IsRemotePlayersEnabled())
+					TEN::Multiplayer::ClearAllRemoteItems();
+			}
+			else if (SelectedOption != MultiplayerSettingsOption::Cancel)
+			{
+				// No action was taken, no need to play confirmation sound.
+				return;
+			}
+
+			MenuToDisplay = Menu::Options;
+			SelectedOption = 4;
+			SoundEffect(SFX_TR4_MENU_SELECT, nullptr, SoundEnvironment::Always);
+		}
+	}
+
 	InventoryResult GuiController::DoPauseMenu(ItemInfo* item)
 	{
 		enum PauseMenuOption
@@ -1477,7 +1541,7 @@ namespace TEN::Gui
 
 		static const int numPauseOptions	  = 2;
 		static const int numStatisticsOptions = 0;
-		static const int numOptionsOptions	  = 3;
+		static const int numOptionsOptions	  = 4;
 
 		TimeInMenu++;
 		UpdateInputActions();
@@ -1513,6 +1577,10 @@ namespace TEN::Gui
 
 		case Menu::Sound:
 			HandleSoundSettingsInput(true);
+			return InventoryResult::None;
+
+		case Menu::Multiplayer:
+			HandleMultiplayerSettingsInput();
 			return InventoryResult::None;
 		}
 

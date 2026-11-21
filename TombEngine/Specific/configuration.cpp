@@ -168,6 +168,7 @@ static bool LoadConfigurationBuffer(const std::vector<unsigned char>& fileData)
 	g_Configuration.EnableCrouchToggle = config->enable_crouch_toggle();
 	g_Configuration.EnableGrabToggle = config->enable_grab_toggle();
 	g_Configuration.EnableSmoothSprintSteps = config->enable_smooth_sprint_steps();
+	g_Configuration.EnableMultiplayer = config->enable_multiplayer();
 
 	g_Configuration.MouseSensitivity = config->mouse_sensitivity();
 	g_Configuration.MenuOptionLoopingMode = (MenuOptionLoopingMode)config->menu_option_looping_mode();
@@ -240,6 +241,7 @@ void InitDefaultConfiguration()
 	g_Configuration.EnableCrouchToggle = true;
 	g_Configuration.EnableGrabToggle = true;
 	g_Configuration.EnableSmoothSprintSteps = true;
+	g_Configuration.EnableMultiplayer = false;
 
 	g_Configuration.MouseSensitivity = GameConfiguration::DEFAULT_MOUSE_SENSITIVITY;
 	g_Configuration.MenuOptionLoopingMode = MenuOptionLoopingMode::SaveLoadOnly;
@@ -334,6 +336,7 @@ static std::vector<unsigned char> BuildConfigurationBuffer()
 	builder.add_enable_crouch_toggle(g_Configuration.EnableCrouchToggle);
 	builder.add_enable_grab_toggle(g_Configuration.EnableGrabToggle);
 	builder.add_enable_smooth_sprint_steps(g_Configuration.EnableSmoothSprintSteps);
+	builder.add_enable_multiplayer(g_Configuration.EnableMultiplayer);
 
 	auto config = builder.Finish();
 	FinishConfigurationBuffer(fbb, config);

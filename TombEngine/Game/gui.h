@@ -81,7 +81,8 @@ namespace TEN::Gui
 		VehicleActions,
 		QuickActions,
 		MenuActions,
-		Sound
+		Sound,
+		Multiplayer
 	};
 
 	enum class GameplaySettingsOption
@@ -232,6 +233,7 @@ namespace TEN::Gui
 		void HandleDisplaySettingsInput(bool fromPauseMenu);
 		void HandleControlSettingsInput(ItemInfo* item, bool fromPauseMenu);
 		void HandleSoundSettingsInput(bool fromPauseMenu);
+		void HandleMultiplayerSettingsInput();
 		void HandleOptionsInput();
 		void BackupOptions();
 		void RebuildDisplayResolutions();

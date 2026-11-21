@@ -232,6 +232,10 @@ namespace TEN::Renderer
 
 			// Sound
 			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_SOUND), plainColor, SF_Center(titleOption == 3));
+			GetNextLinePosition(&y);
+
+			// Multiplayer
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_MULTIPLAYER), plainColor, SF_Center(titleOption == 4));
 			break;
 
 		case Menu::Gameplay:
@@ -463,6 +467,28 @@ namespace TEN::Renderer
 			// Cancel
 			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_CANCEL), optionColor, SF_Center(titleOption == 6));
 
+			break;
+
+		case Menu::Multiplayer:
+			// Setup needed parameters
+			y = MenuVerticalSoundSettings;
+
+			// Title
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_MULTIPLAYER), headerColor, SF_Center());
+			GetNextBlockPosition(&y);
+
+			// Multiplayer switch, greyed out while the gameflow does not allow multiplayer.
+			AddString(MenuLeftSideEntry, y, g_GameFlow->GetString(STRING_MULTIPLAYER), optionColor, SF(titleOption == 0));
+			AddString(MenuRightSideEntry, y, Str_Enabled(g_Gui.GetCurrentSettings().Configuration.EnableMultiplayer),
+				g_GameFlow->IsMultiplayerEnabled() ? plainColor : disabledColor, SF(titleOption == 0));
+			GetNextBlockPosition(&y);
+
+			// Apply
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_APPLY), optionColor, SF_Center(titleOption == 1));
+			GetNextLinePosition(&y);
+
+			// Cancel
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_CANCEL), optionColor, SF_Center(titleOption == 2));
 			break;
 
 		case Menu::GeneralActions:
@@ -735,6 +761,7 @@ namespace TEN::Renderer
 		case Menu::MenuActions:
 		case Menu::Display:
 		case Menu::Sound:
+		case Menu::Multiplayer:
 			RenderOptionsMenu(menu, MenuVerticalOptionsTitle);
 			break;
 		}
@@ -783,6 +810,7 @@ namespace TEN::Renderer
 		case Menu::MenuActions:
 		case Menu::Display:
 		case Menu::Sound:
+		case Menu::Multiplayer:
 			RenderOptionsMenu(menu, MenuVerticalOptionsPause);
 			break;
 		}
