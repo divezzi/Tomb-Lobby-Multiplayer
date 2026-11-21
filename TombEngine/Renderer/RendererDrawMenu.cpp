@@ -218,24 +218,24 @@ namespace TEN::Renderer
 			// Setup needed parameters
 			y = initialY;
 
+			// Multiplayer
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_MULTIPLAYER), plainColor, SF_Center(titleOption == 0));
+			GetNextLinePosition(&y);
+
 			// Gameplay
-			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_GAMEPLAY), plainColor, SF_Center(titleOption == 0));
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_GAMEPLAY), plainColor, SF_Center(titleOption == 1));
 			GetNextLinePosition(&y);
 
 			// Controls
-			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_CONTROLS), plainColor, SF_Center(titleOption == 1));
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_CONTROLS), plainColor, SF_Center(titleOption == 2));
 			GetNextLinePosition(&y);
 
 			// Display
-			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_DISPLAY), plainColor, SF_Center(titleOption == 2));
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_DISPLAY), plainColor, SF_Center(titleOption == 3));
 			GetNextLinePosition(&y);
 
 			// Sound
-			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_SOUND), plainColor, SF_Center(titleOption == 3));
-			GetNextLinePosition(&y);
-
-			// Multiplayer
-			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_MULTIPLAYER), plainColor, SF_Center(titleOption == 4));
+			AddString(MenuCenterEntry, y, g_GameFlow->GetString(STRING_SOUND), plainColor, SF_Center(titleOption == 4));
 			break;
 
 		case Menu::Gameplay:

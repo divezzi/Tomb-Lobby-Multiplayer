@@ -18,4 +18,7 @@ namespace TEN::Multiplayer
 
 	// Returns the player info of the remote player behind a renderer index. Throws if there is none.
 	LaraInfo& GetRemotePlayerInfo(short rendererIndex);
+
+	// Spawns the dynamic lights of the remote players. Called once per game tick, after the scripts have set the remote states.
+	void UpdateRemotePlayerLights();
 }

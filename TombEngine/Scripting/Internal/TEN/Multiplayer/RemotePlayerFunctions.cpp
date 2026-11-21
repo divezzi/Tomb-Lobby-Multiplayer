@@ -37,8 +37,6 @@ namespace TEN::Scripting::Multiplayer
 			}
 		}
 
-		bool animBoundary = false;
-
 		// The animation object is only changed to a loaded one, because the animation lookup reads it. -- divezzi, 20.11.26
 		if (animObjectIDOpt.has_value())
 		{
@@ -55,26 +53,15 @@ namespace TEN::Scripting::Multiplayer
 				Objects[resolvedObjectID].loaded &&
 				animNumber >= 0 && animNumber < (int)Objects[resolvedObjectID].Animations.size())
 			{
-				if (animNumber != item.Animation.AnimNumber)
-					animBoundary = true;
-
 				item.Animation.AnimNumber = animNumber;
 			}
 		}
 
 		if (frameNumberOpt.has_value())
-		{
-			int newFrame = frameNumberOpt.value();
-			int oldFrame = item.Animation.FrameNumber;
-			if (newFrame < oldFrame || (newFrame - oldFrame) > 8)
-				animBoundary = true;
+			item.Animation.FrameNumber = frameNumberOpt.value();
 
-			item.Animation.FrameNumber = newFrame;
-		}
-
-		// Skip interpolation on an animation change or a frame jump. -- divezzi, 20.11.26
-		if (animBoundary)
-			item.DisableInterpolation = true;
+		// NOTE: An animation change or a frame jump does not disable interpolation. The renderer blends the bones between ticks,
+		// and the pose is only snapped by a teleport or a large turn (SetPosition(), SetRotation()). -- divezzi, 20.11.26
 
 		sol::optional<int> activeStateOpt = stateTable["activeState"];
 		sol::optional<int> targetStateOpt = stateTable["targetState"];

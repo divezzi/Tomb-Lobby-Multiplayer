@@ -6,8 +6,11 @@
 #include <stdexcept>
 #include <vector>
 
+#include "Game/Animation/Animation.h"
+#include "Game/camera.h"
 #include "Game/control/trigger.h"
 #include "Game/debug/debug.h"
+#include "Game/effects/Light.h"
 #include "Game/Lara/lara.h"
 #include "Game/Lara/lara_struct.h"
 #include "Game/Multiplayer/Multiplayer.h"
@@ -189,5 +192,71 @@ namespace TEN::Multiplayer
 		}
 
 		return it->second;
+	}
+
+	void UpdateRemotePlayerLights()
+	{
+		using namespace TEN::Animation;
+		using namespace TEN::Effects::Light;
+
+		if (!IsRemotePlayersEnabled())
+			return;
+
+		// The muzzle light is a detail of the near view: it fades out with the distance to the camera and is half as strong as the local one. -- divezzi, 20.11.26
+		constexpr auto LIGHT_DISTANCE_NEAR	 = BLOCK(4);
+		constexpr auto LIGHT_DISTANCE_FAR	 = BLOCK(8);
+		constexpr auto LIGHT_INTENSITY_SCALE = 0.5f;
+
+		auto cameraPos = Camera.pos.ToVector3();
+
+		for (int i = 0; i < MAX_REMOTE_PLAYERS; i++)
+		{
+			if (!g_RemoteItemsOccupied[i])
+				continue;
+
+			const auto& item = g_RemoteItems[i];
+			if (!item.Active || item.Status == ITEM_INVISIBLE)
+				continue;
+
+			auto it = s_remotePlayers.find(GetRemotePlayerId(item.Name));
+			if (it == s_remotePlayers.end())
+				continue;
+
+			const auto& remoteInfo = it->second;
+			if (!remoteInfo.LeftArm.GunFlash && !remoteInfo.RightArm.GunFlash)
+				continue;
+
+			auto gunType = remoteInfo.Control.Weapon.GunType;
+			if (gunType == LaraWeaponType::None ||
+				gunType == LaraWeaponType::Flare ||
+				gunType == LaraWeaponType::Torch ||
+				gunType == LaraWeaponType::Snowmobile ||
+				(int)gunType >= (int)LaraWeaponType::NumWeapons)
+			{
+				continue;
+			}
+
+			const auto& settings = g_GameFlow->GetSettings()->Weapons[(int)gunType - 1];
+			if (!settings.MuzzleFlash)
+				continue;
+
+			for (int arm = 0; arm < 2; arm++)
+			{
+				bool isLeft = (arm == 0);
+				if (isLeft ? !remoteInfo.LeftArm.GunFlash : !remoteInfo.RightArm.GunFlash)
+					continue;
+
+				auto pos = GetJointPosition(item, isLeft ? LM_LHAND : LM_RHAND).ToVector3();
+
+				float distance = Vector3::Distance(cameraPos, pos);
+				if (distance >= LIGHT_DISTANCE_FAR)
+					continue;
+
+				float fade = (distance <= LIGHT_DISTANCE_NEAR) ? 1.0f : (1.0f - ((distance - LIGHT_DISTANCE_NEAR) / (LIGHT_DISTANCE_FAR - LIGHT_DISTANCE_NEAR)));
+				auto color = Color(settings.FlashColor) * (LIGHT_INTENSITY_SCALE * fade);
+
+				SpawnDynamicPointLight(pos, color, CLICK(settings.FlashRange));
+			}
+		}
 	}
 }

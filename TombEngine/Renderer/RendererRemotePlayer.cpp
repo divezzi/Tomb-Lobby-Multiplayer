@@ -32,11 +32,10 @@ namespace TEN::Renderer
 {
 	struct RemotePlayerFrameData
 	{
-		int PrevReceivedFrameNumber	   = 0;
 		int CurrentReceivedFrameNumber = 0;
 	};
 
-	// Frame numbers received for each pool slot, to interpolate the animation between network updates.
+	// Last frame number received for each pool slot, to step the hair once per received frame.
 	static std::array<RemotePlayerFrameData, MAX_REMOTE_PLAYERS> s_remotePlayerFrames;
 
 	// Renderer indices of the remote players collected for the current frame.
@@ -142,10 +141,6 @@ namespace TEN::Renderer
 				newItem.DisableInterpolation = false;
 				item->DisableInterpolation = false;
 
-				for (int j = 0; j < BONE_COUNT_MAX; j++)
-					newItem.PrevAnimationTransforms[j] = newItem.AnimationTransforms[j];
-
-				frameData.PrevReceivedFrameNumber = item->Animation.FrameNumber;
 				frameData.CurrentReceivedFrameNumber = item->Animation.FrameNumber;
 			}
 			else if (posChanged)
@@ -161,10 +156,7 @@ namespace TEN::Renderer
 			int currentFrame = item->Animation.FrameNumber;
 			bool isFrameAdvanced = (currentFrame != frameData.CurrentReceivedFrameNumber);
 			if (isFrameAdvanced)
-			{
-				frameData.PrevReceivedFrameNumber = frameData.CurrentReceivedFrameNumber;
 				frameData.CurrentReceivedFrameNumber = currentFrame;
-			}
 
 			// The hair steps once per update of the remote player (snap, new position or new frame), not once per rendered frame.
 			bool isHairStep = (forceSnap || posJumped || posChanged || isFrameAdvanced);
@@ -177,21 +169,12 @@ namespace TEN::Renderer
 
 			float interpFactor = GetInterpolationFactor(false);
 
-			// Interpolate the frame between the last two received values, only for small forward steps.
-			// Animation changes and wraps are snapped above. -- divezzi, 20.11.26
-			int frameDelta = currentFrame - frameData.PrevReceivedFrameNumber;
-			int displayFrame = (frameDelta > 0 && frameDelta <= 8) ?
-				(frameData.PrevReceivedFrameNumber + (int)round(frameDelta * interpFactor)) :
-				currentFrame;
-
 			try
 			{
 				auto& remoteInfo = GetRemotePlayerInfo((short)rendererIndex);
 
-				item->Animation.FrameNumber = displayFrame;
 				newItem.DoneAnimations = false;
 				UpdateRemotePlayerAnimations(item, remoteInfo);
-				item->Animation.FrameNumber = currentFrame;
 
 				// The hair reads the head bone, so it steps right after the animations. -- divezzi, 20.11.26
 				if (isHairStep)
@@ -199,9 +182,15 @@ namespace TEN::Renderer
 			}
 			catch (const std::exception& ex)
 			{
-				item->Animation.FrameNumber = currentFrame;
 				TENLog(std::string("[REMOTE] Skipping remote player in slot ") + std::to_string(i) + ": " + ex.what(), LogLevel::Error);
 				continue;
+			}
+
+			// The first frame after a spawn or a teleport has no previous bones to blend from. -- divezzi, 20.11.26
+			if (forceSnap || posJumped)
+			{
+				for (int j = 0; j < BONE_COUNT_MAX; j++)
+					newItem.PrevAnimationTransforms[j] = newItem.AnimationTransforms[j];
 			}
 
 			newItem.InterpolatedPosition = Vector3::Lerp(newItem.PrevPosition, newItem.Position, interpFactor);
@@ -210,12 +199,25 @@ namespace TEN::Renderer
 			newItem.InterpolatedScale = Matrix::Lerp(newItem.PrevScale, newItem.Scale, interpFactor);
 			newItem.InterpolatedWorld = Matrix::Lerp(newItem.PrevWorld, newItem.World, interpFactor);
 
-			// The bones are already at the interpolated frame, so they are copied without a matrix interpolation.
+			// The bones blend over the same tick as the pose (SaveOldState() stores the previous ones), so the two never run on different clocks. -- divezzi, 20.11.26
 			for (int j = 0; j < BONE_COUNT_MAX; j++)
-				newItem.InterpolatedAnimationTransforms[j] = newItem.AnimationTransforms[j];
+				newItem.InterpolatedAnimationTransforms[j] = Matrix::Lerp(newItem.PrevAnimationTransforms[j], newItem.AnimationTransforms[j], interpFactor);
 
 			CalculateLightFades(&newItem);
 			CollectLightsForItem(&newItem);
+
+			// Logged when the room changes, to check the lighting that reaches the remote player. -- divezzi, 20.11.26
+			static int lastLoggedRoom[MAX_REMOTE_PLAYERS] = {};
+			if (lastLoggedRoom[i] != item->RoomNumber + 1)
+			{
+				lastLoggedRoom[i] = item->RoomNumber + 1;
+				TENLog(
+					"[REMOTE] Light slot " + std::to_string(i) + ": room " + std::to_string(item->RoomNumber) +
+					", ambient (" + std::to_string(newItem.AmbientLight.x) + ", " + std::to_string(newItem.AmbientLight.y) + ", " + std::to_string(newItem.AmbientLight.z) +
+					"), color (" + std::to_string(newItem.Color.x) + ", " + std::to_string(newItem.Color.y) + ", " + std::to_string(newItem.Color.z) +
+					"), lights " + std::to_string(newItem.LightsToDraw.size()) + ".",
+					LogLevel::Info);
+			}
 
 			s_remotePlayersToDraw.push_back(rendererIndex);
 		}
