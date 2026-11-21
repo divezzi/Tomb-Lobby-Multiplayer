@@ -47,9 +47,6 @@ static auto NewIndexError = NewIndexErrorMaker(Moveable, ScriptReserved_Moveable
 // The old ID_LARA_DOUBLE slot is accepted when the name encodes a player ID, so existing scripts keep working. -- divezzi, 20.11.26
 static bool IsRemotePlayerRequest(GAME_OBJECT_ID objID, const std::string& name)
 {
-	if (!IsRemotePlayersEnabled())
-		return false;
-
 	return (objID == ID_REMOTE_PLAYER || (objID == ID_LARA_DOUBLE && GetRemotePlayerId(name) != NO_VALUE));
 }
 
@@ -114,7 +111,16 @@ static std::unique_ptr<Moveable> Create(GAME_OBJECT_ID objID, const std::string&
 										TypeOrNil<int> animNumber, TypeOrNil<int> frameNumber, TypeOrNil<int> hp, TypeOrNil<int> ocb, const TypeOrNil<aiBitsType>& aiBits)
 {
 	if (IsRemotePlayerRequest(objID, name))
+	{
+		// A request for a remote player must never fall through to a level item of the stock slot. -- divezzi, 20.11.26
+		if (!IsRemotePlayersEnabled())
+		{
+			TENLog("[REMOTE] Can't create remote player '" + name + "': multiplayer is not enabled (gameflow flag, or the option in Options > Multiplayer).", LogLevel::Warning);
+			return nullptr;
+		}
+
 		return CreateRemotePlayerMoveable(name, pos, rot, room);
+	}
 
 	if (objID < 0 || objID >= GAME_OBJECT_ID::ID_NUMBER_OBJECTS || !Objects[objID].loaded)
 	{
@@ -282,6 +288,7 @@ void Moveable::Register(sol::state& state, sol::table& parent)
 		"GetLaraDoubleState", &Moveable::GetLaraDoubleState,
 		"GetFullState", &Moveable::GetFullState,
 		"SetPvPTargetable", &Moveable::SetPvPTargetable,
+		"GetIndex", &Moveable::GetIndex,
 		ScriptReserved_ShowInteractionHighlight, &Moveable::ShowInteractionHighlight,
 		ScriptReserved_HideInteractionHighlight, &Moveable::HideInteractionHighlight,
 
@@ -374,6 +381,10 @@ void Moveable::Initialize()
 	_initialized = true;
 }
 
+/// Get the index of the moveable.
+// For a remote player this is the renderer index, which is past the level items.
+// @function Moveable:GetIndex
+// @treturn int Index of the moveable.
 int Moveable::GetIndex() const
 {
 	return _moveableID;
