@@ -2183,6 +2183,7 @@ namespace TEN::Renderer
 		auto time1 = std::chrono::high_resolution_clock::now();
 		CollectMirrors(view);
 		CollectRooms(view, false);
+		CollectRemotePlayers(view);
 		auto time = std::chrono::high_resolution_clock::now();
 		_timeRoomsCollector = (std::chrono::duration_cast<ns>(time - time1)).count() / 1000000;
 		time1 = time;
@@ -2890,6 +2891,9 @@ namespace TEN::Renderer
 				}
 			}
 		}
+
+		if (!onlyPlayer)
+			DrawRemotePlayers(view, rendererPass);
 	}
 
 	void Renderer::RenderItemShadows(RenderView& renderView)

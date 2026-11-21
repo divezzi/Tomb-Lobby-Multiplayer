@@ -1,0 +1,512 @@
+#include "framework.h"
+#include "Renderer/Renderer.h"
+
+#include <array>
+#include <exception>
+#include <vector>
+
+#include "Game/Animation/Animation.h"
+#include "Game/debug/debug.h"
+#include "Game/items.h"
+#include "Game/Lara/lara_fire.h"
+#include "Game/Lara/lara_struct.h"
+#include "Game/Lara/lara_tests.h"
+#include "Game/Multiplayer/Multiplayer.h"
+#include "Game/Multiplayer/RemoteItemPool.h"
+#include "Game/Multiplayer/RemotePlayer.h"
+#include "Game/Setup.h"
+#include "Math/Math.h"
+#include "Specific/level.h"
+
+using namespace TEN::Animation;
+using namespace TEN::Math;
+using namespace TEN::Multiplayer;
+
+int GetNormalizedArmAnimFrame(GAME_OBJECT_ID animObjectID, int frameNumber);
+
+namespace TEN::Renderer
+{
+	struct RemotePlayerFrameData
+	{
+		int PrevReceivedFrameNumber	   = 0;
+		int CurrentReceivedFrameNumber = 0;
+	};
+
+	// Frame numbers received for each pool slot, to interpolate the animation between network updates.
+	static std::array<RemotePlayerFrameData, MAX_REMOTE_PLAYERS> s_remotePlayerFrames;
+
+	// Renderer indices of the remote players collected for the current frame.
+	static std::vector<int> s_remotePlayersToDraw;
+
+	static bool ShouldAnimateRemoteUpperBody(const LaraWeaponType& weapon, const ItemInfo& item, const LaraInfo& remoteInfo)
+	{
+		switch (weapon)
+		{
+		case LaraWeaponType::RocketLauncher:
+		case LaraWeaponType::HarpoonGun:
+		case LaraWeaponType::GrenadeLauncher:
+		case LaraWeaponType::Crossbow:
+		case LaraWeaponType::Shotgun:
+			return (item.Animation.ActiveState == LS_IDLE ||
+					item.Animation.ActiveState == LS_TURN_LEFT_FAST ||
+					item.Animation.ActiveState == LS_TURN_RIGHT_FAST ||
+					item.Animation.ActiveState == LS_TURN_LEFT_SLOW ||
+					item.Animation.ActiveState == LS_TURN_RIGHT_SLOW);
+
+		case LaraWeaponType::HK:
+			if (remoteInfo.RightArm.AnimNumber == 0 ||
+				remoteInfo.RightArm.AnimNumber == 2 ||
+				remoteInfo.RightArm.AnimNumber == 4)
+			{
+				return true;
+			}
+
+			return (item.Animation.ActiveState == LS_IDLE ||
+					item.Animation.ActiveState == LS_TURN_LEFT_FAST ||
+					item.Animation.ActiveState == LS_TURN_RIGHT_FAST ||
+					item.Animation.ActiveState == LS_TURN_LEFT_SLOW ||
+					item.Animation.ActiveState == LS_TURN_RIGHT_SLOW);
+
+		default:
+			return false;
+		}
+	}
+
+	void Renderer::CollectRemotePlayers(RenderView& renderView)
+	{
+		s_remotePlayersToDraw.clear();
+
+		if (!IsRemotePlayersEnabled())
+			return;
+
+		if (!_moveableObjects[ID_LARA].has_value())
+			return;
+
+		for (int i = 0; i < MAX_REMOTE_PLAYERS; i++)
+		{
+			if (!g_RemoteItemsOccupied[i])
+				continue;
+
+			auto* item = &g_RemoteItems[i];
+			if (!item->Active || item->Status == ITEM_INVISIBLE)
+				continue;
+
+			if (item->Model.Color.w < EPSILON)
+				continue;
+
+			int rendererIndex = item->Index;
+			if (rendererIndex < 0 || rendererIndex >= (int)_items.size())
+				continue;
+
+			if (item->RoomNumber == NO_VALUE || item->RoomNumber >= (short)_rooms.size())
+				continue;
+
+			static bool isFirstDrawLogged[MAX_REMOTE_PLAYERS] = {};
+			if (!isFirstDrawLogged[i])
+			{
+				isFirstDrawLogged[i] = true;
+				TENLog("[REMOTE] First draw of slot " + std::to_string(i) + ", renderer index " + std::to_string(rendererIndex) + ".", LogLevel::Info);
+			}
+
+			auto& newItem = _items[rendererIndex];
+
+			newItem.ItemNumber = rendererIndex;
+			newItem.ObjectID = item->ObjectNumber;
+			newItem.Color = item->Model.Color;
+
+			auto newPosition = item->Pose.Position.ToVector3();
+			auto newRotation = item->Pose.Orientation.ToRotationMatrix();
+			auto newScale = Matrix::CreateScale(item->Pose.Scale);
+			auto newTranslation = Matrix::CreateTranslation(newPosition);
+			auto newWorld = newScale * newRotation * newTranslation;
+
+			bool forceSnap = item->DisableInterpolation || newItem.DisableInterpolation;
+			bool posJumped = Vector3::Distance(newItem.PrevPosition, newPosition) > BLOCK(1);
+			bool posChanged = (newPosition != newItem.Position);
+
+			auto& frameData = s_remotePlayerFrames[i];
+
+			if (forceSnap || posJumped)
+			{
+				newItem.PrevPosition = newPosition;
+				newItem.PrevTranslation = newTranslation;
+				newItem.PrevRotation = newRotation;
+				newItem.PrevScale = newScale;
+				newItem.PrevWorld = newWorld;
+
+				// A pool item is not reset by the control loop, so the renderer clears both flags. -- divezzi, 20.11.26
+				newItem.DisableInterpolation = false;
+				item->DisableInterpolation = false;
+
+				for (int j = 0; j < BONE_COUNT_MAX; j++)
+					newItem.PrevAnimationTransforms[j] = newItem.AnimationTransforms[j];
+
+				frameData.PrevReceivedFrameNumber = item->Animation.FrameNumber;
+				frameData.CurrentReceivedFrameNumber = item->Animation.FrameNumber;
+			}
+			else if (posChanged)
+			{
+				// A new network position arrived: the previous one becomes the interpolation origin.
+				newItem.PrevPosition = newItem.Position;
+				newItem.PrevTranslation = newItem.Translation;
+				newItem.PrevRotation = newItem.Rotation;
+				newItem.PrevScale = newItem.Scale;
+				newItem.PrevWorld = newItem.World;
+			}
+
+			int currentFrame = item->Animation.FrameNumber;
+			if (currentFrame != frameData.CurrentReceivedFrameNumber)
+			{
+				frameData.PrevReceivedFrameNumber = frameData.CurrentReceivedFrameNumber;
+				frameData.CurrentReceivedFrameNumber = currentFrame;
+			}
+
+			newItem.Position = newPosition;
+			newItem.Translation = newTranslation;
+			newItem.Rotation = newRotation;
+			newItem.Scale = newScale;
+			newItem.World = newWorld;
+
+			float interpFactor = GetInterpolationFactor(false);
+
+			// Interpolate the frame between the last two received values, only for small forward steps.
+			// Animation changes and wraps are snapped above. -- divezzi, 20.11.26
+			int frameDelta = currentFrame - frameData.PrevReceivedFrameNumber;
+			int displayFrame = (frameDelta > 0 && frameDelta <= 8) ?
+				(frameData.PrevReceivedFrameNumber + (int)round(frameDelta * interpFactor)) :
+				currentFrame;
+
+			try
+			{
+				auto& remoteInfo = GetRemotePlayerInfo((short)rendererIndex);
+
+				item->Animation.FrameNumber = displayFrame;
+				newItem.DoneAnimations = false;
+				UpdateRemotePlayerAnimations(item, remoteInfo);
+				item->Animation.FrameNumber = currentFrame;
+			}
+			catch (const std::exception& ex)
+			{
+				item->Animation.FrameNumber = currentFrame;
+				TENLog(std::string("[REMOTE] Skipping remote player in slot ") + std::to_string(i) + ": " + ex.what(), LogLevel::Error);
+				continue;
+			}
+
+			newItem.InterpolatedPosition = Vector3::Lerp(newItem.PrevPosition, newItem.Position, interpFactor);
+			newItem.InterpolatedTranslation = Matrix::Lerp(newItem.PrevTranslation, newItem.Translation, interpFactor);
+			newItem.InterpolatedRotation = Matrix::Lerp(newItem.PrevRotation, newItem.Rotation, interpFactor);
+			newItem.InterpolatedScale = Matrix::Lerp(newItem.PrevScale, newItem.Scale, interpFactor);
+			newItem.InterpolatedWorld = Matrix::Lerp(newItem.PrevWorld, newItem.World, interpFactor);
+
+			// The bones are already at the interpolated frame, so they are copied without a matrix interpolation.
+			for (int j = 0; j < BONE_COUNT_MAX; j++)
+				newItem.InterpolatedAnimationTransforms[j] = newItem.AnimationTransforms[j];
+
+			CalculateLightFades(&newItem);
+			CollectLightsForItem(&newItem);
+
+			s_remotePlayersToDraw.push_back(rendererIndex);
+		}
+	}
+
+	void Renderer::DrawRemotePlayers(RenderView& view, RendererPass rendererPass)
+	{
+		if (s_remotePlayersToDraw.empty())
+			return;
+
+		for (auto* room : view.RoomsToDraw)
+		{
+			if (IgnoreReflectionPassForRoom(room->RoomNumber))
+				continue;
+
+			for (int rendererIndex : s_remotePlayersToDraw)
+			{
+				const auto* nativeItem = GetItemByRendererIndex(rendererIndex);
+				if (nativeItem == nullptr || nativeItem->RoomNumber != room->RoomNumber)
+					continue;
+
+				try
+				{
+					DrawRemotePlayer(view, &_items[rendererIndex], GetRemotePlayerInfo((short)rendererIndex), rendererPass);
+				}
+				catch (const std::exception& ex)
+				{
+					TENLog(std::string("[REMOTE] Cannot draw remote player at renderer index ") + std::to_string(rendererIndex) + ": " + ex.what(), LogLevel::Error);
+				}
+			}
+		}
+	}
+
+	void Renderer::UpdateRemotePlayerAnimations(ItemInfo* item, LaraInfo& remoteInfo)
+	{
+		auto& rItem = _items[item->Index];
+		rItem.ItemNumber = item->Index;
+
+		if (rItem.DoneAnimations)
+			return;
+
+		if (_moveableObjects.empty())
+			return;
+
+		GAME_OBJECT_ID animSlot = item->Animation.AnimObjectID;
+		if (animSlot < 0 || animSlot >= ID_NUMBER_OBJECTS || !_moveableObjects[animSlot].has_value())
+			animSlot = ID_LARA;
+
+		auto& playerObject = *_moveableObjects[animSlot];
+
+		// NOTE: The bone rotations of this object are shared with the local player. They are saved here and restored
+		// at the end, and nothing reads them in between. -- divezzi, 20.11.26
+		auto& sharedBones = playerObject.LinearizedBones;
+		auto savedExtraRotations = std::vector<Quaternion>(sharedBones.size());
+		for (int i = 0; i < (int)sharedBones.size(); i++)
+			savedExtraRotations[i] = sharedBones[i]->ExtraRotation;
+
+		for (auto& bone : sharedBones)
+			bone->ExtraRotation = Quaternion::Identity;
+
+		// The world matrix of the local player must not be overwritten, so the remote player uses its own.
+		rItem.World = item->Pose.ToMatrix();
+
+		playerObject.LinearizedBones[LM_TORSO]->ExtraRotation = remoteInfo.ExtraTorsoRot.ToQuaternion();
+		playerObject.LinearizedBones[LM_HEAD]->ExtraRotation = remoteInfo.ExtraHeadRot.ToQuaternion();
+
+		int mask = MESH_BITS(LM_HIPS) | MESH_BITS(LM_LTHIGH) | MESH_BITS(LM_LSHIN) | MESH_BITS(LM_LFOOT) | MESH_BITS(LM_RTHIGH) | MESH_BITS(LM_RSHIN) | MESH_BITS(LM_RFOOT) | MESH_BITS(LM_TORSO) | MESH_BITS(LM_HEAD);
+
+		const auto& frameData = GetFrame(*item);
+		UpdateAnimation(&rItem, playerObject, frameData, mask);
+
+		auto gunType = remoteInfo.Control.Weapon.GunType;
+		auto handStatus = remoteInfo.Control.HandStatus;
+
+		if (remoteInfo.Control.Look.IsUsingBinoculars)
+		{
+			gunType = LaraWeaponType::Shotgun;
+			handStatus = HandStatus::WeaponReady;
+		}
+
+		if (gunType != LaraWeaponType::Flare && (handStatus == HandStatus::Free || handStatus == HandStatus::Busy) ||
+			gunType == LaraWeaponType::Flare && !remoteInfo.Flare.ControlLeft)
+		{
+			mask = MESH_BITS(LM_LINARM) | MESH_BITS(LM_LOUTARM) | MESH_BITS(LM_LHAND) | MESH_BITS(LM_RINARM) | MESH_BITS(LM_ROUTARM) | MESH_BITS(LM_RHAND);
+			UpdateAnimation(&rItem, playerObject, frameData, mask);
+		}
+		else
+		{
+			// The arm animation object is not sent over the network, so it is taken from the weapon type.
+			auto armAnimObjectID = GetWeaponObjectID(gunType);
+
+			if (gunType == LaraWeaponType::Pistol || gunType == LaraWeaponType::Uzi)
+			{
+				playerObject.LinearizedBones[LM_LINARM]->ExtraRotation *= remoteInfo.LeftArm.Orientation.ToQuaternion();
+				playerObject.LinearizedBones[LM_RINARM]->ExtraRotation *= remoteInfo.RightArm.Orientation.ToQuaternion();
+			}
+			else
+			{
+				playerObject.LinearizedBones[LM_LINARM]->ExtraRotation =
+				playerObject.LinearizedBones[LM_RINARM]->ExtraRotation *= remoteInfo.RightArm.Orientation.ToQuaternion();
+			}
+
+			if (IsCrouching(item) && gunType == LaraWeaponType::Revolver)
+				gunType = LaraWeaponType::Pistol;
+
+			switch (gunType)
+			{
+			case LaraWeaponType::Shotgun:
+			case LaraWeaponType::HK:
+			case LaraWeaponType::Crossbow:
+			case LaraWeaponType::GrenadeLauncher:
+			case LaraWeaponType::RocketLauncher:
+			case LaraWeaponType::HarpoonGun:
+			{
+				// Left arm.
+				mask = MESH_BITS(LM_LINARM) | MESH_BITS(LM_LOUTARM) | MESH_BITS(LM_LHAND);
+				if (ShouldAnimateRemoteUpperBody(gunType, *item, remoteInfo))
+					mask |= MESH_BITS(LM_TORSO) | MESH_BITS(LM_HEAD);
+
+				const auto& leftArmAnim = GetAnimData(armAnimObjectID, remoteInfo.LeftArm.AnimNumber);
+				const auto& leftArmFrame = leftArmAnim.Frames[remoteInfo.LeftArm.FrameNumber];
+				UpdateAnimation(&rItem, playerObject, leftArmFrame, mask);
+
+				// Right arm.
+				mask = MESH_BITS(LM_RINARM) | MESH_BITS(LM_ROUTARM) | MESH_BITS(LM_RHAND);
+				if (ShouldAnimateRemoteUpperBody(remoteInfo.Control.Weapon.GunType, *item, remoteInfo))
+					mask |= MESH_BITS(LM_TORSO) | MESH_BITS(LM_HEAD);
+
+				const auto& rightArmAnim = GetAnimData(armAnimObjectID, remoteInfo.RightArm.AnimNumber);
+				const auto& rightArmFrame = rightArmAnim.Frames[remoteInfo.RightArm.FrameNumber];
+				UpdateAnimation(&rItem, playerObject, rightArmFrame, mask);
+			}
+			break;
+
+			case LaraWeaponType::Revolver:
+			{
+				mask = MESH_BITS(LM_LINARM) | MESH_BITS(LM_LOUTARM) | MESH_BITS(LM_LHAND);
+				int leftFrameNumber = GetNormalizedArmAnimFrame(armAnimObjectID, remoteInfo.LeftArm.FrameNumber);
+				const auto& leftArmAnim = GetAnimData(armAnimObjectID, remoteInfo.LeftArm.AnimNumber);
+				UpdateAnimation(&rItem, playerObject, leftArmAnim.Frames[leftFrameNumber], mask);
+
+				mask = MESH_BITS(LM_RINARM) | MESH_BITS(LM_ROUTARM) | MESH_BITS(LM_RHAND);
+				int rightFrameNumber = GetNormalizedArmAnimFrame(armAnimObjectID, remoteInfo.RightArm.FrameNumber);
+				const auto& rightArmAnim = GetAnimData(armAnimObjectID, remoteInfo.RightArm.AnimNumber);
+				UpdateAnimation(&rItem, playerObject, rightArmAnim.Frames[rightFrameNumber], mask);
+			}
+			break;
+
+			case LaraWeaponType::Pistol:
+			case LaraWeaponType::Uzi:
+			default:
+			{
+				// Left arm.
+				int leftFrameNumber = GetNormalizedArmAnimFrame(armAnimObjectID, remoteInfo.LeftArm.FrameNumber);
+				const auto& leftArmAnim = GetAnimData(armAnimObjectID, remoteInfo.LeftArm.AnimNumber);
+				const auto& leftFrame = leftArmAnim.Frames[leftFrameNumber];
+
+				int upperArmMask = MESH_BITS(LM_LINARM);
+				mask = MESH_BITS(LM_LOUTARM) | MESH_BITS(LM_LHAND);
+				UpdateAnimation(&rItem, playerObject, leftFrame, upperArmMask, true);
+				UpdateAnimation(&rItem, playerObject, leftFrame, mask);
+
+				// Right arm.
+				int rightFrameNumber = GetNormalizedArmAnimFrame(armAnimObjectID, remoteInfo.RightArm.FrameNumber);
+				const auto& rightArmAnim = GetAnimData(armAnimObjectID, remoteInfo.RightArm.AnimNumber);
+				const auto& rightFrame = rightArmAnim.Frames[rightFrameNumber];
+
+				upperArmMask = MESH_BITS(LM_RINARM);
+				mask = MESH_BITS(LM_ROUTARM) | MESH_BITS(LM_RHAND);
+				UpdateAnimation(&rItem, playerObject, rightFrame, upperArmMask, true);
+				UpdateAnimation(&rItem, playerObject, rightFrame, mask);
+			}
+			break;
+
+			case LaraWeaponType::Flare:
+			case LaraWeaponType::Torch:
+			{
+				// Left arm.
+				int leftFrameNumber = GetNormalizedArmAnimFrame(armAnimObjectID, remoteInfo.LeftArm.FrameNumber);
+				const auto& leftArmAnim = GetAnimData(armAnimObjectID, remoteInfo.LeftArm.AnimNumber);
+				const auto& leftFrame = leftArmAnim.Frames[leftFrameNumber];
+
+				mask = MESH_BITS(LM_LINARM) | MESH_BITS(LM_LOUTARM) | MESH_BITS(LM_LHAND);
+
+				// The head and torso are masked while the flare is taken out.
+				if (!remoteInfo.Control.IsLow &&
+					remoteInfo.LeftArm.AnimNumber > 1 &&
+					remoteInfo.LeftArm.AnimNumber < 4)
+				{
+					mask |= MESH_BITS(LM_TORSO) | MESH_BITS(LM_HEAD);
+				}
+
+				UpdateAnimation(&rItem, playerObject, leftFrame, mask);
+
+				// The right arm follows the body animation.
+				mask = MESH_BITS(LM_RINARM) | MESH_BITS(LM_ROUTARM) | MESH_BITS(LM_RHAND);
+				UpdateAnimation(&rItem, playerObject, frameData, mask);
+			}
+			break;
+			}
+		}
+
+		rItem.SkinIndex = item->Model.GetSkinGlobalIndex();
+		rItem.MeshIndex = item->Model.MeshIndex;
+
+		for (int i = 0; i < (int)sharedBones.size(); i++)
+			sharedBones[i]->ExtraRotation = savedExtraRotations[i];
+
+		rItem.DoneAnimations = true;
+	}
+
+	void Renderer::DrawRemotePlayer(RenderView& view, RendererItem* itemToDraw, LaraInfo& remoteInfo, RendererPass rendererPass)
+	{
+		if (remoteInfo.Control.Look.OpticRange != 0 && _currentMirror == nullptr)
+			return;
+
+		const auto* nativeItem = GetItemByRendererIndex(itemToDraw->ItemNumber);
+		if (nativeItem == nullptr)
+			return;
+
+		if (nativeItem->Flags & IFLAG_INVISIBLE)
+			return;
+
+		_graphicsDevice->BindVertexBuffer(_moveablesVertexBuffer.get());
+		_graphicsDevice->BindIndexBuffer(_moveablesIndexBuffer.get());
+
+		auto& playerObject = *_moveableObjects[ID_LARA];
+		auto skinMode = GetSkinningMode(playerObject, itemToDraw->SkinIndex);
+
+		_stObjects.Objects[0].World = itemToDraw->InterpolatedWorld;
+		ReflectMatrixOptionally(_stObjects.Objects[0].World);
+
+		_stObjects.Objects[0].Color = itemToDraw->Color;
+		_stObjects.Objects[0].AmbientLight = itemToDraw->AmbientLight;
+		_stObjects.Skinned = (int)skinMode;
+
+		for (int k = 0; k < itemToDraw->MeshIndex.size(); k++)
+			_stObjects.BoneLightModes[k] = (int)GetMesh(itemToDraw->MeshIndex[k])->LightMode;
+
+		bool acceptsShadows = playerObject.ShadowType == ShadowMode::None;
+		BindMoveableLights(itemToDraw->LightsToDraw, itemToDraw->RoomNumber, itemToDraw->PrevRoomNumber, itemToDraw->LightFade, acceptsShadows);
+
+		if (skinMode == SkinningMode::Full)
+		{
+			for (int m = 0; m < playerObject.AnimationTransforms.size(); m++)
+				_stObjects.Bones[m] = playerObject.BindPoseTransforms[m] * itemToDraw->InterpolatedAnimationTransforms[m];
+
+			UpdateConstantBuffer(&_stObjects, _cbObjects.get());
+			DrawMesh(itemToDraw, GetMesh(itemToDraw->SkinIndex), RendererObjectType::Moveable, 0, true, view, rendererPass);
+		}
+
+		memcpy(_stObjects.Bones, itemToDraw->InterpolatedAnimationTransforms, playerObject.AnimationTransforms.size() * sizeof(Matrix));
+		UpdateConstantBuffer(&_stObjects, _cbObjects.get());
+
+		for (int k = 0; k < itemToDraw->MeshIndex.size(); k++)
+		{
+			if (!nativeItem->MeshBits.Test(k))
+				continue;
+
+			if (skinMode == SkinningMode::Full && g_Level.Meshes[nativeItem->Model.MeshIndex[k]].hidden)
+				continue;
+
+			DrawMesh(itemToDraw, GetMesh(itemToDraw->MeshIndex[k]), RendererObjectType::Moveable, k, false, view, rendererPass);
+		}
+
+		if (skinMode == SkinningMode::Classic)
+			DrawRemotePlayerJoints(itemToDraw, view, rendererPass);
+
+		DrawRemotePlayerHolsters(itemToDraw, view, remoteInfo, rendererPass);
+	}
+
+	void Renderer::DrawRemotePlayerHolsters(RendererItem* itemToDraw, RenderView& view, LaraInfo& remoteInfo, RendererPass rendererPass)
+	{
+		auto leftHolsterID = remoteInfo.Control.Weapon.HolsterInfo.LeftHolster;
+		auto rightHolsterID = remoteInfo.Control.Weapon.HolsterInfo.RightHolster;
+		auto backHolsterID = remoteInfo.Control.Weapon.HolsterInfo.BackHolster;
+
+		if (_moveableObjects[(int)leftHolsterID])
+		{
+			auto& holsterSkin = *_moveableObjects[(int)leftHolsterID];
+			DrawMesh(itemToDraw, holsterSkin.ObjectMeshes[LM_LTHIGH], RendererObjectType::Moveable, LM_LTHIGH, false, view, rendererPass);
+		}
+
+		if (_moveableObjects[(int)rightHolsterID])
+		{
+			auto& holsterSkin = *_moveableObjects[(int)rightHolsterID];
+			DrawMesh(itemToDraw, holsterSkin.ObjectMeshes[LM_RTHIGH], RendererObjectType::Moveable, LM_RTHIGH, false, view, rendererPass);
+		}
+
+		if (backHolsterID != HolsterSlot::Empty && _moveableObjects[(int)backHolsterID])
+		{
+			auto& holsterSkin = *_moveableObjects[(int)backHolsterID];
+			DrawMesh(itemToDraw, holsterSkin.ObjectMeshes[LM_TORSO], RendererObjectType::Moveable, LM_TORSO, false, view, rendererPass);
+		}
+	}
+
+	void Renderer::DrawRemotePlayerJoints(RendererItem* itemToDraw, RenderView& view, RendererPass rendererPass)
+	{
+		if (!_moveableObjects[ID_LARA_SKIN_JOINTS].has_value())
+			return;
+
+		auto& skinJoints = *_moveableObjects[ID_LARA_SKIN_JOINTS];
+		for (int k = 1; k < skinJoints.ObjectMeshes.size(); k++)
+			DrawMesh(itemToDraw, skinJoints.ObjectMeshes[k], RendererObjectType::Moveable, k, false, view, rendererPass);
+	}
+}

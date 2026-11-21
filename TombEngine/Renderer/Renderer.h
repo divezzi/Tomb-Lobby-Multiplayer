@@ -466,6 +466,12 @@ namespace TEN::Renderer
 		void DrawLaraHolsters(RendererItem* itemToDraw, RendererRoom* room, RenderView& view, RendererPass rendererPass);
 		void DrawLaraJoints(RendererItem* itemToDraw, RendererRoom* room, RenderView& view, RendererPass rendererPass);
 		void DrawLaraHair(RendererItem* itemToDraw, RendererRoom* room, RenderView& view, RendererPass rendererPass);
+		void CollectRemotePlayers(RenderView& renderView);
+		void DrawRemotePlayers(RenderView& view, RendererPass rendererPass);
+		void DrawRemotePlayer(RenderView& view, RendererItem* itemToDraw, LaraInfo& remoteInfo, RendererPass rendererPass);
+		void DrawRemotePlayerHolsters(RendererItem* itemToDraw, RenderView& view, LaraInfo& remoteInfo, RendererPass rendererPass);
+		void DrawRemotePlayerJoints(RendererItem* itemToDraw, RenderView& view, RendererPass rendererPass);
+		void UpdateRemotePlayerAnimations(ItemInfo* item, LaraInfo& remoteInfo);
 		void DrawMesh(RendererItem* itemToDraw, RendererMesh* mesh, RendererObjectType type, int boneIndex, bool skinned, RenderView& view, RendererPass rendererPass);
 		void PrepareSimpleParticles(RenderView& view);
 		void PrepareParticleGroups(RenderView& view);
