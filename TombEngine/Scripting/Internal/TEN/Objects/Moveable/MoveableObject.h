@@ -144,6 +144,7 @@ public:
 	void SetLaraDoubleState(const sol::table& stateTable);
 	sol::table GetLaraDoubleState(sol::this_state state) const;
 	sol::table GetFullState(sol::this_state state) const;
+	void SetPvPTargetable(bool isTargetable);
 	void EnableItem(sol::optional<float> timer);
 	void DisableItem();
 	void MakeInvisible(); // Compatibility.

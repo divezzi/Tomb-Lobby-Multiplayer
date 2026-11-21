@@ -97,6 +97,9 @@ BoundingOrientedBox ItemInfo::GetObb() const
 
 std::vector<BoundingSphere> ItemInfo::GetSpheres() const
 {
+	if (IsRemotePlayer())
+		return g_Renderer.GetRemotePlayerSpheres(Index);
+
 	return g_Renderer.GetSpheres(Index);
 }
 

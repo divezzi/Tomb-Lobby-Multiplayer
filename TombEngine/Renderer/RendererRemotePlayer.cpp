@@ -539,6 +539,68 @@ namespace TEN::Renderer
 			DrawMesh(itemToDraw, skinJoints.ObjectMeshes[k], RendererObjectType::Moveable, k, false, view, rendererPass);
 	}
 
+	// Computes the bones of a remote player outside the render loop, if they are not done yet. Returns false if that is not possible.
+	bool Renderer::EnsureRemotePlayerAnimations(int rendererIndex, RendererItem& rendererItem)
+	{
+		if (rendererItem.DoneAnimations)
+			return true;
+
+		auto* item = GetItemByRendererIndex(rendererIndex);
+		if (item == nullptr || !item->IsRemotePlayer())
+			return false;
+
+		try
+		{
+			UpdateRemotePlayerAnimations(item, GetRemotePlayerInfo((short)rendererIndex));
+		}
+		catch (const std::exception& ex)
+		{
+			TENLog(std::string("[REMOTE] Cannot update the bones of renderer index ") + std::to_string(rendererIndex) + ": " + ex.what(), LogLevel::Error);
+			return false;
+		}
+
+		return rendererItem.DoneAnimations;
+	}
+
+	Vector3 Renderer::GetRemotePlayerBonePosition(int rendererIndex, int boneID, const Vector3& relOffset)
+	{
+		const auto* item = GetItemByRendererIndex(rendererIndex);
+		if (item == nullptr || rendererIndex < 0 || rendererIndex >= (int)_items.size())
+			return Vector3::Zero;
+
+		auto& rendererItem = _items[rendererIndex];
+		rendererItem.ItemNumber = rendererIndex;
+
+		if (boneID < 0 || boneID >= BONE_COUNT_MAX || !EnsureRemotePlayerAnimations(rendererIndex, rendererItem))
+			return Vector3::Transform(relOffset, item->Pose.ToMatrix());
+
+		return Vector3::Transform(relOffset, rendererItem.AnimationTransforms[boneID] * rendererItem.World);
+	}
+
+	std::vector<BoundingSphere> Renderer::GetRemotePlayerSpheres(int rendererIndex)
+	{
+		auto spheres = std::vector<BoundingSphere>{};
+
+		if (rendererIndex < 0 || rendererIndex >= (int)_items.size() || GetItemByRendererIndex(rendererIndex) == nullptr)
+			return spheres;
+
+		auto& rendererItem = _items[rendererIndex];
+		rendererItem.ItemNumber = rendererIndex;
+
+		if (!EnsureRemotePlayerAnimations(rendererIndex, rendererItem))
+			return spheres;
+
+		// The meshes are the ones of the remote player's own mesh list, as the pool slot has no renderer object.
+		for (int i = 0; i < (int)rendererItem.MeshIndex.size() && i < BONE_COUNT_MAX; i++)
+		{
+			const auto& mesh = *GetMesh(rendererItem.MeshIndex[i]);
+			auto pos = Vector3::Transform(mesh.Sphere.Center, rendererItem.AnimationTransforms[i] * rendererItem.World);
+			spheres.push_back(BoundingSphere(pos, mesh.Sphere.Radius));
+		}
+
+		return spheres;
+	}
+
 	bool Renderer::DrawRemotePlayerGunFlashes(RenderView& view)
 	{
 		bool isAnyFlashDrawn = false;

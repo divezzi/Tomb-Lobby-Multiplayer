@@ -493,6 +493,7 @@ if not exist "%ScriptsDir%\Strings.lua" xcopy /Y "$(SolutionDir)Scripts\Strings.
     <ClInclude Include="Game\Multiplayer\RemoteHair.h" />
     <ClInclude Include="Game\Multiplayer\RemoteItemPool.h" />
     <ClInclude Include="Game\Multiplayer\RemotePlayer.h" />
+    <ClInclude Include="Game\Multiplayer\RemoteTargeting.h" />
     <ClInclude Include="Game\missile.h" />
     <ClInclude Include="Game\people.h" />
     <ClInclude Include="Game\Hud\DrawItems\DrawItems.h" />
@@ -1158,6 +1159,7 @@ if not exist "%ScriptsDir%\Strings.lua" xcopy /Y "$(SolutionDir)Scripts\Strings.
     <ClCompile Include="Game\Multiplayer\RemoteHair.cpp" />
     <ClCompile Include="Game\Multiplayer\RemoteItemPool.cpp" />
     <ClCompile Include="Game\Multiplayer\RemotePlayer.cpp" />
+    <ClCompile Include="Game\Multiplayer\RemoteTargeting.cpp" />
     <ClCompile Include="Game\missile.cpp" />
     <ClCompile Include="Game\people.cpp" />
     <ClCompile Include="Game\Hud\DrawItems\DrawItems.cpp" />

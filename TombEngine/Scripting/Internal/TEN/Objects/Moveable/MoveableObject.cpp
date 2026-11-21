@@ -11,6 +11,7 @@
 #include "Game/Multiplayer/Multiplayer.h"
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Multiplayer/RemotePlayer.h"
+#include "Game/Multiplayer/RemoteTargeting.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
 #include "Objects/objectslist.h"
@@ -280,6 +281,7 @@ void Moveable::Register(sol::state& state, sol::table& parent)
 		"SetLaraDoubleState", &Moveable::SetLaraDoubleState,
 		"GetLaraDoubleState", &Moveable::GetLaraDoubleState,
 		"GetFullState", &Moveable::GetFullState,
+		"SetPvPTargetable", &Moveable::SetPvPTargetable,
 		ScriptReserved_ShowInteractionHighlight, &Moveable::ShowInteractionHighlight,
 		ScriptReserved_HideInteractionHighlight, &Moveable::HideInteractionHighlight,
 
@@ -1592,6 +1594,24 @@ sol::table Moveable::GetLaraDoubleState(sol::this_state state) const
 sol::table Moveable::GetFullState(sol::this_state state) const
 {
 	return TEN::Scripting::Multiplayer::GetLocalPlayerState(*_moveable, state);
+}
+
+/// Set whether the local player can aim at a remote player.
+// Only valid on remote players. Remote players are not targetable until this is set.
+// @function Moveable:SetPvPTargetable
+// @tparam bool isTargetable True to let the auto-aim of the local player lock on to the remote player.
+void Moveable::SetPvPTargetable(bool isTargetable)
+{
+	if (!GetValid())
+		return;
+
+	if (!_moveable->IsRemotePlayer())
+	{
+		TENLog("[REMOTE] SetPvPTargetable can only be used on remote players.", LogLevel::Warning);
+		return;
+	}
+
+	SetRemotePlayerTargetable(*_moveable, isTargetable);
 }
 
 bool Moveable::MeshExists(int index) const

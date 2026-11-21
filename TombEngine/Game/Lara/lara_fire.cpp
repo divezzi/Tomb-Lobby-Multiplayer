@@ -20,6 +20,7 @@
 #include "Game/Lara/lara_two_guns.h"
 #include "Game/Lara/ModernControls.h"
 #include "Game/misc.h"
+#include "Game/Multiplayer/RemoteTargeting.h"
 #include "Game/savegame.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
@@ -1090,6 +1091,8 @@ void FindNewTarget(ItemInfo& laraItem, const WeaponInfo& weaponInfo)
 	unsigned int targetCount = 0;
 	float maxDistance = weaponInfo.TargetDist;
 
+	// Remote players are not creatures, so they join the candidates here. The list is empty while multiplayer is off. -- divezzi, 20.11.26
+	auto candidatePtrs = std::vector<ItemInfo*>{};
 	for (auto creatureIndex : ActiveCreatures)
 	{
 		auto* creaturePtr = GetCreatureInfo(&g_Level.Items[creatureIndex]);
@@ -1098,7 +1101,15 @@ void FindNewTarget(ItemInfo& laraItem, const WeaponInfo& weaponInfo)
 		if (creaturePtr->ItemNumber == NO_VALUE)
 			continue;
 
-		auto& item = g_Level.Items[creaturePtr->ItemNumber];
+		candidatePtrs.push_back(&g_Level.Items[creaturePtr->ItemNumber]);
+	}
+
+	for (auto* remotePtr : TEN::Multiplayer::GetTargetableRemotePlayers())
+		candidatePtrs.push_back(remotePtr);
+
+	for (auto* candidatePtr : candidatePtrs)
+	{
+		auto& item = *candidatePtr;
 
 		// Check if creature is alive.
 		if (item.HitPoints <= 0)

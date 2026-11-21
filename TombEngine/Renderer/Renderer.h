@@ -475,6 +475,7 @@ namespace TEN::Renderer
 		void DrawRemotePlayerHair(RendererItem* itemToDraw, RenderView& view, RendererPass rendererPass);
 		void DrawRemotePlayerHairSorted(RendererSortableObject* objectInfo, RendererObjectType lastObjectType, RenderView& view, int index, int baseIndex, int count);
 		void UpdateRemotePlayerAnimations(ItemInfo* item, LaraInfo& remoteInfo);
+		bool EnsureRemotePlayerAnimations(int rendererIndex, RendererItem& rendererItem);
 		void DrawMesh(RendererItem* itemToDraw, RendererMesh* mesh, RendererObjectType type, int boneIndex, bool skinned, RenderView& view, RendererPass rendererPass);
 		void PrepareSimpleParticles(RenderView& view);
 		void PrepareParticleGroups(RenderView& view);
@@ -809,6 +810,8 @@ namespace TEN::Renderer
 		Vector3	   GetMoveableBonePosition(int itemNumber, int boneID, const Vector3& relOffset = Vector3::Zero);
 		Quaternion GetMoveableBoneOrientation(int itemNumber, int boneID);
 		bool	   GetRemotePlayerBoneMatrix(int rendererIndex, int jointIndex, Matrix* outMatrix);
+		Vector3	   GetRemotePlayerBonePosition(int rendererIndex, int boneID, const Vector3& relOffset = Vector3::Zero);
+		std::vector<BoundingSphere> GetRemotePlayerSpheres(int rendererIndex);
 
 		void AddDisplaySprite(const RendererSprite& sprite, const Vector2& pos2D, short orient, const Vector2& size, const Vector4& color,
 			int priority, BlendMode blendMode, const Vector2& aspectCorrection, RenderView& renderView);

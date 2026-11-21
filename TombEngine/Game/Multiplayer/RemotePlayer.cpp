@@ -13,6 +13,7 @@
 #include "Game/Multiplayer/Multiplayer.h"
 #include "Game/Multiplayer/RemoteHair.h"
 #include "Game/Multiplayer/RemoteItemPool.h"
+#include "Game/Multiplayer/RemoteTargeting.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
 #include "Scripting/Include/Flow/ScriptInterfaceFlowHandler.h"
@@ -147,6 +148,8 @@ namespace TEN::Multiplayer
 		int playerId = GetRemotePlayerId(item.Name);
 
 		item.Active = false;
+		SetRemotePlayerTargetable(item, false);
+		ReleaseRemotePlayerTarget(item);
 		s_remotePlayers.erase(playerId);
 		s_playerIdToSlot.erase(playerId);
 		ClearRemoteHair(playerId);
