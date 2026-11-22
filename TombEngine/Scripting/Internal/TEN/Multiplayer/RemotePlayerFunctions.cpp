@@ -83,6 +83,7 @@ namespace TEN::Scripting::Multiplayer
 		sol::optional<Rotation> rightArmOrientOpt = stateTable["rightArmOrientation"];
 		sol::optional<Rotation> targetArmOrientOpt = stateTable["targetArmOrientation"];
 		sol::optional<bool> flareControlLeftOpt = stateTable["flareControlLeft"];
+		sol::optional<int> flareLifeOpt = stateTable["flareLife"];
 		sol::optional<int> leftArmAnimOpt = stateTable["leftArmAnim"];
 		sol::optional<int> leftArmFrameOpt = stateTable["leftArmFrame"];
 		sol::optional<int> leftArmGunSmokeOpt = stateTable["leftArmGunSmoke"];
@@ -149,6 +150,7 @@ namespace TEN::Scripting::Multiplayer
 		}
 
 		remoteInfo.Flare.ControlLeft = flareControlLeftOpt.value_or(false);
+		remoteInfo.Flare.Life = (unsigned int)std::max(flareLifeOpt.value_or(0), 0);
 
 		remoteInfo.LeftArm.AnimNumber = leftArmAnimOpt.value_or(remoteInfo.LeftArm.AnimNumber);
 		remoteInfo.LeftArm.FrameNumber = leftArmFrameOpt.value_or(remoteInfo.LeftArm.FrameNumber);
@@ -185,6 +187,7 @@ namespace TEN::Scripting::Multiplayer
 		stateTable["leftArmOrientation"] = remoteInfo.LeftArm.Orientation;
 		stateTable["rightArmOrientation"] = remoteInfo.RightArm.Orientation;
 		stateTable["flareControlLeft"] = remoteInfo.Flare.ControlLeft;
+		stateTable["flareLife"] = remoteInfo.Flare.Life;
 
 		stateTable["leftArmAnim"] = remoteInfo.LeftArm.AnimNumber;
 		stateTable["leftArmFrame"] = remoteInfo.LeftArm.FrameNumber;
@@ -228,6 +231,7 @@ namespace TEN::Scripting::Multiplayer
 		stateTable["leftArmOrientation"] = Lara.LeftArm.Orientation;
 		stateTable["rightArmOrientation"] = Lara.RightArm.Orientation;
 		stateTable["flareControlLeft"] = Lara.Flare.ControlLeft;
+		stateTable["flareLife"] = Lara.Flare.Life;
 		stateTable["leftArmAnim"] = Lara.LeftArm.AnimNumber;
 		stateTable["leftArmFrame"] = Lara.LeftArm.FrameNumber;
 		stateTable["leftArmFrameBase"] = 0;

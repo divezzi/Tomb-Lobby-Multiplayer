@@ -1161,6 +1161,13 @@ local function sendPlayerData(additionalSuffixes)
         lastSentTorchLit = 0
     end
 
+    -- The life of the flare is sent with every packet while a flare burns in the hand, in every pose, so that the remote player can light it with the settings of the level. The life is zero when no flare is lit, and the token is absent then. -- divezzi, 22.11.26
+    local flrSuffix = ""
+    local flareLife = tonumber(localTable.flareLife) or 0
+    if flareLife > 0 then
+        flrSuffix = ":FLR:" .. math.floor(flareLife)
+    end
+
     local fireSuffix = ""
     local currentOnFire = localTable.isOnFire and 1 or 0
     local forceFireResend = (state.fireResendCount or 0) > 0
@@ -1330,7 +1337,7 @@ local levelReqSuffix = ""
         meshString,
         rotSuffix,
         vehicleSuffix,
-        customSuffix .. jlSuffix .. nameSuffix .. lvlSuffix .. levelReqSuffix .. soundSuffix .. vehicleSoundSuffix .. aimSuffix .. lookSuffix .. holsterSuffix .. sourceSuffix .. hpSuffix .. flmSuffix .. fireSuffix .. pvpSuffix .. roomSuffix .. typingSuffix .. hitSuffix .. chatSuffix .. broadcastSuffix .. pauseSuffix
+        customSuffix .. jlSuffix .. nameSuffix .. lvlSuffix .. levelReqSuffix .. soundSuffix .. vehicleSoundSuffix .. aimSuffix .. lookSuffix .. holsterSuffix .. sourceSuffix .. hpSuffix .. flmSuffix .. flrSuffix .. fireSuffix .. pvpSuffix .. roomSuffix .. typingSuffix .. hitSuffix .. chatSuffix .. broadcastSuffix .. pauseSuffix
     )
 
     local okSend, sendErr = pcall(function() return state.client:send(msg) end)
@@ -1793,6 +1800,13 @@ meshIndices = {}
     for i = 1, #parts - 1 do
         if parts[i] == "HP" then
             remoteTable.health = tonumber(parts[i + 1]) or 0
+            break
+        end
+    end
+
+    for i = 1, #parts - 1 do
+        if parts[i] == "FLR" then
+            remoteTable.flareLife = tonumber(parts[i + 1]) or 0
             break
         end
     end

@@ -8,10 +8,13 @@
 
 #include "Game/Animation/Animation.h"
 #include "Game/camera.h"
+#include "Game/collision/collide_room.h"
 #include "Game/control/trigger.h"
 #include "Game/debug/debug.h"
+#include "Game/effects/chaffFX.h"
 #include "Game/effects/Light.h"
 #include "Game/Lara/lara.h"
+#include "Game/Lara/lara_flare.h"
 #include "Game/Lara/lara_struct.h"
 #include "Game/Multiplayer/Multiplayer.h"
 #include "Game/Multiplayer/RemoteHair.h"
@@ -243,7 +246,7 @@ namespace TEN::Multiplayer
 			if (!g_RemoteItemsOccupied[i])
 				continue;
 
-			const auto& item = g_RemoteItems[i];
+			auto& item = g_RemoteItems[i];
 			if (!item.Active || item.Status == ITEM_INVISIBLE)
 				continue;
 
@@ -252,6 +255,22 @@ namespace TEN::Multiplayer
 				continue;
 
 			const auto& remoteInfo = it->second;
+
+			// A flare lit in the hand burns in every pose, as DoFlareInHand() runs for the local player whatever the arm does. The light, sparks, smoke and burn sound come from the left hand of the remote player and the flare settings of the level. Flare.ControlLeft only tells the arm pose, so it is not tested here. -- divezzi, 22.11.26
+			if (remoteInfo.Control.Weapon.GunType == LaraWeaponType::Flare && remoteInfo.Flare.Life != 0)
+			{
+				const auto& flareSettings = g_GameFlow->GetSettings()->Flare;
+				int flareLife = (int)remoteInfo.Flare.Life;
+
+				auto flarePos = GetJointPosition(item, LM_LHAND, flareSettings.Offset.ToVector3i() + Vector3i(11, 32, 0));
+				if (DoFlareLight(item, flarePos, flareLife))
+				{
+					auto effectPos = GetJointPosition(item, LM_LHAND, flareSettings.Offset.ToVector3i() + Vector3i(11, 32, -4));
+					auto effectVel = GetJointPosition(item, LM_LHAND, Vector3i(11, 32, BLOCK(1) + TEN::Math::Random::GenerateInt(0, 256))) - effectPos;
+					TriggerChaffEffects(item, effectPos, effectVel, item.Animation.Velocity.z, TestEnvironment(ENV_FLAG_WATER, &item), remoteInfo.Control.Look.IsUsingBinoculars ? 0 : flareLife);
+				}
+			}
+
 			if (!remoteInfo.LeftArm.GunFlash && !remoteInfo.RightArm.GunFlash)
 				continue;
 
