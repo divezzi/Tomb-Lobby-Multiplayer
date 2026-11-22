@@ -104,8 +104,8 @@ local puppetFactory = {
     Name = function(id)
         return "lara_double_" .. id
     end,
-    Apply = function(puppet, stateTable)
-        puppet:SetLaraDoubleState(stateTable)
+    Apply = function(puppet, remoteTable)
+        puppet:SetLaraDoubleState(remoteTable)
     end,
     Read = function(puppet)
         return puppet:GetLaraDoubleState()
@@ -115,7 +115,7 @@ local puppetFactory = {
     end
 }
 
--- Replaces the object that stands for a remote player. Every member is optional and falls back to the default. Create(id, pos, rot) returns the object or nil, Name(id) returns the name used in logs, Apply(puppet, stateTable) shows the received state, Read(puppet) returns the shown state (handStatus, flareControlLeft, isUsingBinoculars) and Destroy(puppet) removes it. The object must not depend on the animation state or the items of the local game. -- divezzi, 20.11.26
+-- Replaces the object that stands for a remote player. Every member is optional and falls back to the default. Create(id, pos, rot) returns the object or nil, Name(id) returns the name used in logs, Apply(puppet, remoteTable) shows the received state, Read(puppet) returns the shown state (handStatus, flareControlLeft, isUsingBinoculars) and Destroy(puppet) removes it. The object must not depend on the animation state or the items of the local game. -- divezzi, 20.11.26
 function Multiplayer.SetPuppetFactory(factory)
     for _, member in ipairs({ "Create", "Name", "Apply", "Read", "Destroy" }) do
         if factory and factory[member] then
@@ -646,7 +646,8 @@ local usedSprite = false
     end
 end
 
--- Reader of the local player, the default source of the state that is sent. Everything the sender needs from the game comes from a reader, so a script can replace it with SetReader(). -- divezzi, 20.11.26
+-- Reader of the local player, the default source of the state that is sent. Everything the sender needs from the game comes from a reader, so a script can replace it with SetReader().
+-- The table that a reader returns is called localTable: it describes the local player or a moveable of the level and only leaves the game, it is never applied back. The table built from a received packet is called remoteTable and is applied to the remote player only. -- divezzi, 21.11.26
 local function readLara(lara)
     local objID = lara:GetObjectID()
     if objID ~= 0 then
@@ -654,41 +655,41 @@ local function readLara(lara)
         return nil
     end
 
-    local ok, stateData = pcall(function() return lara:GetFullState() end)
-    if not ok or not stateData then
+    local ok, localTable = pcall(function() return lara:GetFullState() end)
+    if not ok or not localTable then
         if DEBUG then print("[MP] GetFullState failed.") end
         return nil
     end
 
     local pos = lara:GetPosition()
     local rot = lara:GetRotation()
-    stateData.posX = pos.x
-    stateData.posY = pos.y
-    stateData.posZ = pos.z
-    stateData.roomNumber = lara:GetRoomNumber()
-    stateData.rotY = rot.y
-    stateData.rotX = rot.x or 0
-    stateData.rotZ = rot.z or 0
-    stateData.health = lara:GetHP()
-    stateData.ammo = lara:GetAmmoCount()
-    stateData.inputForward = KeyIsHeld(ActionID.FORWARD)
-    stateData.inputBack = KeyIsHeld(ActionID.BACK)
-    stateData.inputLeft = KeyIsHeld(ActionID.LEFT)
-    stateData.inputRight = KeyIsHeld(ActionID.RIGHT)
-    stateData.inputJump = KeyIsHeld(ActionID.JUMP)
-    stateData.inputAction = KeyIsHeld(ActionID.ACTION)
-    stateData.inputCrouch = KeyIsHeld(ActionID.CROUCH)
-    stateData.inputWalk = KeyIsHeld(ActionID.WALK)
-    stateData.inputSprint = KeyIsHeld(ActionID.SPRINT)
-    stateData.inputRoll = KeyIsHeld(ActionID.ROLL)
-    stateData.inputLook = KeyIsHeld(ActionID.LOOK)
-    stateData.inputFlare = KeyIsHeld(ActionID.FLARE)
-    stateData.inputStepLeft = false
-    stateData.inputStepRight = false
-    stateData.inputDraw = KeyIsHeld(ActionID.DRAW)
-    stateData.torchIsLit = lara:IsTorchLit()
-    stateData.isOnFire   = (lara:GetEffect() == TEN.Effects.EffectID.FIRE)
-    stateData.vehicle = lara:GetVehicle()
+    localTable.posX = pos.x
+    localTable.posY = pos.y
+    localTable.posZ = pos.z
+    localTable.roomNumber = lara:GetRoomNumber()
+    localTable.rotY = rot.y
+    localTable.rotX = rot.x or 0
+    localTable.rotZ = rot.z or 0
+    localTable.health = lara:GetHP()
+    localTable.ammo = lara:GetAmmoCount()
+    localTable.inputForward = KeyIsHeld(ActionID.FORWARD)
+    localTable.inputBack = KeyIsHeld(ActionID.BACK)
+    localTable.inputLeft = KeyIsHeld(ActionID.LEFT)
+    localTable.inputRight = KeyIsHeld(ActionID.RIGHT)
+    localTable.inputJump = KeyIsHeld(ActionID.JUMP)
+    localTable.inputAction = KeyIsHeld(ActionID.ACTION)
+    localTable.inputCrouch = KeyIsHeld(ActionID.CROUCH)
+    localTable.inputWalk = KeyIsHeld(ActionID.WALK)
+    localTable.inputSprint = KeyIsHeld(ActionID.SPRINT)
+    localTable.inputRoll = KeyIsHeld(ActionID.ROLL)
+    localTable.inputLook = KeyIsHeld(ActionID.LOOK)
+    localTable.inputFlare = KeyIsHeld(ActionID.FLARE)
+    localTable.inputStepLeft = false
+    localTable.inputStepRight = false
+    localTable.inputDraw = KeyIsHeld(ActionID.DRAW)
+    localTable.torchIsLit = lara:IsTorchLit()
+    localTable.isOnFire   = (lara:GetEffect() == TEN.Effects.EffectID.FIRE)
+    localTable.vehicle = lara:GetVehicle()
 
     local armsOk, arms = pcall(function()
         return {
@@ -700,33 +701,33 @@ local function readLara(lara)
         }
     end)
     if armsOk then
-        stateData.arms = arms
+        localTable.arms = arms
     elseif DEBUG then
         print("[MP] Reading the arm orientations failed: " .. tostring(arms))
     end
 
     local headOk, headRot = pcall(function() return lara:GetExtraHeadRotation() end)
     if headOk then
-        stateData.headRot = headRot
+        localTable.headRot = headRot
     elseif DEBUG then
         print("[MP] Reading the head rotation failed: " .. tostring(headRot))
     end
 
-    if stateData.torchIsLit then
+    if localTable.torchIsLit then
         local torchOk, torchPos = pcall(function() return lara:GetJointPosition(13, Vec3(-10, 54, 156)) end)
         if torchOk then
-            stateData.torchPos = torchPos
+            localTable.torchPos = torchPos
         end
     end
 
-    if stateData.isOnFire then
+    if localTable.isOnFire then
         local fireOk, firePos = pcall(function() return lara:GetJointPosition(0, Vec3(0, 0, 0)) end)
         if fireOk then
-            stateData.firePos = firePos
+            localTable.firePos = firePos
         end
     end
 
-    return stateData
+    return localTable
 end
 
 -- Reader of any other moveable, for example an Animating slot or an enemy. It sends the pose through the animation object, animation, frame and state numbers, so the puppet plays the same animation. Weapons, arms and input are left out; the puppet keeps its defaults for them. -- divezzi, 20.11.26
@@ -769,7 +770,7 @@ end
 
 local activeReader = Multiplayer.Readers.Lara
 
--- Replaces the source of the state that is sent. A reader has GetMoveable(), which returns the moveable to describe (or nil), and Read(moveable), which returns the state table that the sender expects. Without a call the local player is read. -- divezzi, 20.11.26
+-- Replaces the source of the state that is sent. A reader has GetMoveable(), which returns the moveable to describe (or nil), and Read(moveable), which returns the localTable that the sender expects. Without a call the local player is read. -- divezzi, 20.11.26
 function Multiplayer.SetReader(reader)
     activeReader = reader or Multiplayer.Readers.Lara
     state.lastSentState = nil
@@ -782,8 +783,8 @@ local function getLocalState()
     return activeReader.Read(moveable)
 end
 
-local function getLocalVehicleState(localState)
-    local vehicle = localState.vehicle
+local function getLocalVehicleState(localTable)
+    local vehicle = localTable.vehicle
     if not vehicle then return nil end
 
     local rot = vehicle:GetRotation()
@@ -960,32 +961,32 @@ local lastSentJL         = nil
 local function sendPlayerData(additionalSuffixes)
     if not (state.isConnected and state.client) then return end
 
-    local laraState = getLocalState()
-    if not laraState then return end
+    local localTable = getLocalState()
+    if not localTable then return end
 
     local stateChanged = false
     if not state.lastSentState then
         stateChanged = true
     else
-        if (laraState.animNumber ~= state.lastSentState.animNumber or
-            math.abs(laraState.posX - state.lastSentState.posX) > POS_CHANGE_THRESHOLD or
-            math.abs(laraState.posY - state.lastSentState.posY) > POS_CHANGE_THRESHOLD or
-            math.abs(laraState.posZ - state.lastSentState.posZ) > POS_CHANGE_THRESHOLD or
-            math.abs(laraState.rotY - state.lastSentState.rotY) > ROT_CHANGE_THRESHOLD or
-            math.abs(laraState.rotX - (state.lastSentState.rotX or 0)) > ROT_CHANGE_THRESHOLD or
-            math.abs(laraState.rotZ - (state.lastSentState.rotZ or 0)) > ROT_CHANGE_THRESHOLD or
-            laraState.inputForward ~= state.lastSentState.inputForward or
-            laraState.inputBack ~= state.lastSentState.inputBack or
-            laraState.inputLeft ~= state.lastSentState.inputLeft or
-            laraState.inputRight ~= state.lastSentState.inputRight or
-            laraState.inputJump ~= state.lastSentState.inputJump or
-            laraState.inputAction ~= state.lastSentState.inputAction or
-            laraState.inputCrouch ~= state.lastSentState.inputCrouch or
-            laraState.inputWalk ~= state.lastSentState.inputWalk or
-            laraState.inputSprint ~= state.lastSentState.inputSprint or
-            laraState.inputRoll ~= state.lastSentState.inputRoll or
-            laraState.inputFlare ~= state.lastSentState.inputFlare or
-            laraState.inputDraw ~= state.lastSentState.inputDraw) then
+        if (localTable.animNumber ~= state.lastSentState.animNumber or
+            math.abs(localTable.posX - state.lastSentState.posX) > POS_CHANGE_THRESHOLD or
+            math.abs(localTable.posY - state.lastSentState.posY) > POS_CHANGE_THRESHOLD or
+            math.abs(localTable.posZ - state.lastSentState.posZ) > POS_CHANGE_THRESHOLD or
+            math.abs(localTable.rotY - state.lastSentState.rotY) > ROT_CHANGE_THRESHOLD or
+            math.abs(localTable.rotX - (state.lastSentState.rotX or 0)) > ROT_CHANGE_THRESHOLD or
+            math.abs(localTable.rotZ - (state.lastSentState.rotZ or 0)) > ROT_CHANGE_THRESHOLD or
+            localTable.inputForward ~= state.lastSentState.inputForward or
+            localTable.inputBack ~= state.lastSentState.inputBack or
+            localTable.inputLeft ~= state.lastSentState.inputLeft or
+            localTable.inputRight ~= state.lastSentState.inputRight or
+            localTable.inputJump ~= state.lastSentState.inputJump or
+            localTable.inputAction ~= state.lastSentState.inputAction or
+            localTable.inputCrouch ~= state.lastSentState.inputCrouch or
+            localTable.inputWalk ~= state.lastSentState.inputWalk or
+            localTable.inputSprint ~= state.lastSentState.inputSprint or
+            localTable.inputRoll ~= state.lastSentState.inputRoll or
+            localTable.inputFlare ~= state.lastSentState.inputFlare or
+            localTable.inputDraw ~= state.lastSentState.inputDraw) then
             stateChanged = true
         end
     end
@@ -997,33 +998,33 @@ local function sendPlayerData(additionalSuffixes)
     end
 
     state.lastSentState = {
-        posX = laraState.posX,
-        posY = laraState.posY,
-        posZ = laraState.posZ,
-        rotY = laraState.rotY,
-        rotX = laraState.rotX,
-        rotZ = laraState.rotZ,
-        animNumber = laraState.animNumber,
-        inputForward = laraState.inputForward,
-        inputBack = laraState.inputBack,
-        inputLeft = laraState.inputLeft,
-        inputRight = laraState.inputRight,
-        inputJump = laraState.inputJump,
-        inputAction = laraState.inputAction,
-        inputCrouch = laraState.inputCrouch,
-        inputWalk = laraState.inputWalk,
-        inputSprint = laraState.inputSprint,
-        inputRoll = laraState.inputRoll,
-        inputFlare = laraState.inputFlare,
-        inputDraw = laraState.inputDraw
+        posX = localTable.posX,
+        posY = localTable.posY,
+        posZ = localTable.posZ,
+        rotY = localTable.rotY,
+        rotX = localTable.rotX,
+        rotZ = localTable.rotZ,
+        animNumber = localTable.animNumber,
+        inputForward = localTable.inputForward,
+        inputBack = localTable.inputBack,
+        inputLeft = localTable.inputLeft,
+        inputRight = localTable.inputRight,
+        inputJump = localTable.inputJump,
+        inputAction = localTable.inputAction,
+        inputCrouch = localTable.inputCrouch,
+        inputWalk = localTable.inputWalk,
+        inputSprint = localTable.inputSprint,
+        inputRoll = localTable.inputRoll,
+        inputFlare = localTable.inputFlare,
+        inputDraw = localTable.inputDraw
     }
 
     local meshString = ""
-    if laraState.meshIndices then
-        meshString = table.concat(laraState.meshIndices, ",")
+    if localTable.meshIndices then
+        meshString = table.concat(localTable.meshIndices, ",")
     end
 
-    local vehicleState = getLocalVehicleState(laraState)
+    local vehicleState = getLocalVehicleState(localTable)
     local vehicleSuffix = ""
     if vehicleState then
         vehicleSuffix = string.format(":VEH:%d:%d:%d:%d:%.2f:%.2f:%.2f",
@@ -1038,8 +1039,8 @@ local function sendPlayerData(additionalSuffixes)
     end
 
     local rotSuffix = ""
-    if math.abs(laraState.rotX or 0) > 0.01 or math.abs(laraState.rotZ or 0) > 0.01 then
-        rotSuffix = string.format(":ROT:%.2f:%.2f", laraState.rotX, laraState.rotZ)
+    if math.abs(localTable.rotX or 0) > 0.01 or math.abs(localTable.rotZ or 0) > 0.01 then
+        rotSuffix = string.format(":ROT:%.2f:%.2f", localTable.rotX, localTable.rotZ)
     end
 
     local soundSuffix = ""
@@ -1059,9 +1060,9 @@ local function sendPlayerData(additionalSuffixes)
     end
 
     local aimSuffix = ""
-    local gunsDrawn = (laraState.handStatus or 0) ~= 0
-    if laraState.arms then
-        local arms = laraState.arms
+    local gunsDrawn = (localTable.handStatus or 0) ~= 0
+    if localTable.arms then
+        local arms = localTable.arms
         local candidate = string.format(
             ":AIM:%.2f:%.2f:%.2f:%.2f:%.2f:%.2f:%.2f:%.2f:%.2f:%d:%d",
             arms.left.x, arms.left.y, arms.left.z,
@@ -1076,11 +1077,11 @@ local function sendPlayerData(additionalSuffixes)
     end
 
     local lookSuffix = ""
-    if laraState.headRot then
-        local headRot = laraState.headRot
+    if localTable.headRot then
+        local headRot = localTable.headRot
         local lookActive = math.abs(headRot.x) > 0.5 or math.abs(headRot.y) > 0.5
 
-        if lookActive or laraState.isUsingBinoculars then
+        if lookActive or localTable.isUsingBinoculars then
             local candidate = string.format(":LOOK:%d:%.2f:%.2f", 1, headRot.x * 2, headRot.y * 2)
             lookSuffix = candidate
             lastSentLookSuffix = candidate
@@ -1096,32 +1097,32 @@ local function sendPlayerData(additionalSuffixes)
     -- NOTE: SRC is sent only by a reader other than the local player. A parser that finds its tokens by keyword skips it, so other versions are not affected. -- divezzi, 20.11.26
     local sourceSuffix = ""
     if activeReader.IsGeneric then
-        sourceSuffix = ":SRC:" .. (tonumber(laraState.animObjectID) or 0)
+        sourceSuffix = ":SRC:" .. (tonumber(localTable.animObjectID) or 0)
     end
 
     local holsterSuffix = ""
-    if laraState.leftHolster or laraState.rightHolster or laraState.backHolster then
+    if localTable.leftHolster or localTable.rightHolster or localTable.backHolster then
         holsterSuffix = string.format(":H:%d:%d:%d",
-            tonumber(laraState.leftHolster) or 0,
-            tonumber(laraState.rightHolster) or 0,
-            tonumber(laraState.backHolster) or 0)
+            tonumber(localTable.leftHolster) or 0,
+            tonumber(localTable.rightHolster) or 0,
+            tonumber(localTable.backHolster) or 0)
     end
 
     local hpSuffix = ""
-    local currentHP = laraState.health or 0
+    local currentHP = localTable.health or 0
     if currentHP ~= lastSentHP then
         hpSuffix = ":HP:" .. currentHP
         lastSentHP = currentHP
     end
 
     local flmSuffix = ""
-    local currentTorchLit = laraState.torchIsLit and 1 or 0
+    local currentTorchLit = localTable.torchIsLit and 1 or 0
 
     local forceTorchResend = (state.torchResendCount or 0) > 0
     if forceTorchResend then state.torchResendCount = state.torchResendCount - 1 end
 
     if currentTorchLit == 1 then
-        local handPos = laraState.torchPos
+        local handPos = localTable.torchPos
         if handPos then
             flmSuffix = string.format(":FLM:1:%d:%d:%d",
                 math.floor(handPos.x), math.floor(handPos.y), math.floor(handPos.z))
@@ -1135,12 +1136,12 @@ local function sendPlayerData(additionalSuffixes)
     end
 
     local fireSuffix = ""
-    local currentOnFire = laraState.isOnFire and 1 or 0
+    local currentOnFire = localTable.isOnFire and 1 or 0
     local forceFireResend = (state.fireResendCount or 0) > 0
     if forceFireResend then state.fireResendCount = state.fireResendCount - 1 end
 
     if currentOnFire == 1 then
-        local hipPos = laraState.firePos
+        local hipPos = localTable.firePos
         if hipPos then
             fireSuffix = string.format(":FIRE:1:%d:%d:%d",
                 math.floor(hipPos.x), math.floor(hipPos.y), math.floor(hipPos.z))
@@ -1213,7 +1214,7 @@ local levelReqSuffix = ""
     end
 
     local roomSuffix = ""
-    local currentRoom = tostring(laraState.roomNumber or "")
+    local currentRoom = tostring(localTable.roomNumber or "")
     if currentRoom ~= lastSentRoom then
         roomSuffix = ":ROOM:" .. currentRoom
         lastSentRoom = currentRoom
@@ -1275,41 +1276,41 @@ local levelReqSuffix = ""
     -- NOTE: Fields 32, 33, 36 and 37 are always zero and this version does not read them. They stay because the fields are read by position, so other versions keep working; deprecated, remove them when those versions are retired. -- divezzi, 20.11.26
     local msg = string.format(
         "INPUT:HYBRID:%d:%d:%d:%.2f:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%s%s%s%s\n",
-        math.floor(laraState.posX),
-        math.floor(laraState.posY),
-        math.floor(laraState.posZ),
-        laraState.rotY,
-        laraState.animNumber,
-        laraState.frameNumber,
-        tonumber(laraState.gunType) or 0,
-        tonumber(laraState.handStatus) or 0,
-        (laraState.isLow and 1 or 0),
-        (laraState.inputForward and 1 or 0),
-        (laraState.inputBack and 1 or 0),
-        (laraState.inputLeft and 1 or 0),
-        (laraState.inputRight and 1 or 0),
-        (laraState.inputJump and 1 or 0),
-        (laraState.inputAction and 1 or 0),
-        (laraState.inputCrouch and 1 or 0),
-        (laraState.inputWalk and 1 or 0),
-        (laraState.inputSprint and 1 or 0),
-        (laraState.inputRoll and 1 or 0),
-        (laraState.inputDraw and 1 or 0),
-        (laraState.inputFlare and 1 or 0),
-        tonumber(laraState.leftArmAnim) or 0,
-        tonumber(laraState.leftArmFrame) or 0,
-        tonumber(laraState.leftArmFrameBase) or 0,
-        tonumber(laraState.rightArmAnim) or 0,
-        tonumber(laraState.rightArmFrame) or 0,
-        tonumber(laraState.rightArmFrameBase) or 0,
-        tonumber(laraState.animObjectID) or 0,
-        tonumber(laraState.frameBase) or 0,
-        (laraState.isUsingBinoculars and 1 or 0),
-        (laraState.flareControlLeft and 1 or 0),
+        math.floor(localTable.posX),
+        math.floor(localTable.posY),
+        math.floor(localTable.posZ),
+        localTable.rotY,
+        localTable.animNumber,
+        localTable.frameNumber,
+        tonumber(localTable.gunType) or 0,
+        tonumber(localTable.handStatus) or 0,
+        (localTable.isLow and 1 or 0),
+        (localTable.inputForward and 1 or 0),
+        (localTable.inputBack and 1 or 0),
+        (localTable.inputLeft and 1 or 0),
+        (localTable.inputRight and 1 or 0),
+        (localTable.inputJump and 1 or 0),
+        (localTable.inputAction and 1 or 0),
+        (localTable.inputCrouch and 1 or 0),
+        (localTable.inputWalk and 1 or 0),
+        (localTable.inputSprint and 1 or 0),
+        (localTable.inputRoll and 1 or 0),
+        (localTable.inputDraw and 1 or 0),
+        (localTable.inputFlare and 1 or 0),
+        tonumber(localTable.leftArmAnim) or 0,
+        tonumber(localTable.leftArmFrame) or 0,
+        tonumber(localTable.leftArmFrameBase) or 0,
+        tonumber(localTable.rightArmAnim) or 0,
+        tonumber(localTable.rightArmFrame) or 0,
+        tonumber(localTable.rightArmFrameBase) or 0,
+        tonumber(localTable.animObjectID) or 0,
+        tonumber(localTable.frameBase) or 0,
+        (localTable.isUsingBinoculars and 1 or 0),
+        (localTable.flareControlLeft and 1 or 0),
         0,
         0,
-        tonumber(laraState.leftArmGunFlash) or 0,
-        tonumber(laraState.rightArmGunFlash) or 0,
+        tonumber(localTable.leftArmGunFlash) or 0,
+        tonumber(localTable.rightArmGunFlash) or 0,
         0,
         0,
         meshString,
@@ -1683,7 +1684,7 @@ else
         end
     end
 
-    local stateTable = {
+    local remoteTable = {
         animNumber = tonumber(parts[5]),
         frameNumber = tonumber(parts[6]),
         gunType = tonumber(parts[7]),
@@ -1738,47 +1739,47 @@ meshIndices = {}
                 tonumber(parts[i + 2]) or 0,
                 tonumber(parts[i + 3]) or 0
             )
-            stateTable.rightArmOrientation = Rotation(
+            remoteTable.rightArmOrientation = Rotation(
                 tonumber(parts[i + 4]) or 0,
                 tonumber(parts[i + 5]) or 0,
                 tonumber(parts[i + 6]) or 0
             )
-            stateTable.targetArmOrientation = Rotation(
+            remoteTable.targetArmOrientation = Rotation(
                 tonumber(parts[i + 7]) or 0,
                 tonumber(parts[i + 8]) or 0,
                 tonumber(parts[i + 9]) or 0
             )
-            stateTable.leftArmLocked = tonumber(parts[i + 10]) == 1
-            stateTable.rightArmLocked = tonumber(parts[i + 11]) == 1
+            remoteTable.leftArmLocked = tonumber(parts[i + 10]) == 1
+            remoteTable.rightArmLocked = tonumber(parts[i + 11]) == 1
             break
         end
     end
 
     if aimLeftArmRot then
-        stateTable.leftArmOrientation = aimLeftArmRot
+        remoteTable.leftArmOrientation = aimLeftArmRot
     end
 
     for i = 1, #parts - 2 do
         if parts[i] == "LOOK" then
-            stateTable.lookActive = tonumber(parts[i + 1]) == 1
-            stateTable.lookOrientX = tonumber(parts[i + 2]) or 0
-            stateTable.lookOrientY = tonumber(parts[i + 3]) or 0
+            remoteTable.lookActive = tonumber(parts[i + 1]) == 1
+            remoteTable.lookOrientX = tonumber(parts[i + 2]) or 0
+            remoteTable.lookOrientY = tonumber(parts[i + 3]) or 0
             break
         end
     end
 
     for i = 1, #parts - 3 do
         if parts[i] == "H" then
-            stateTable.leftHolster = tonumber(parts[i + 1]) or 0
-            stateTable.rightHolster = tonumber(parts[i + 2]) or 0
-            stateTable.backHolster = tonumber(parts[i + 3]) or 0
+            remoteTable.leftHolster = tonumber(parts[i + 1]) or 0
+            remoteTable.rightHolster = tonumber(parts[i + 2]) or 0
+            remoteTable.backHolster = tonumber(parts[i + 3]) or 0
             break
         end
     end
 
     for i = 1, #parts - 1 do
         if parts[i] == "HP" then
-            stateTable.health = tonumber(parts[i + 1]) or 0
+            remoteTable.health = tonumber(parts[i + 1]) or 0
             break
         end
     end
@@ -1823,14 +1824,14 @@ meshIndices = {}
 
     for i = 1, #parts - 1 do
         if parts[i] == "NAME" then
-            stateTable.playerName = parts[i + 1] or nil
+            remoteTable.playerName = parts[i + 1] or nil
             break
         end
     end
 
     for i = 1, #parts - 1 do
         if parts[i] == "PVP" then
-            stateTable.pvpEnabled = tonumber(parts[i + 1]) == 1
+            remoteTable.pvpEnabled = tonumber(parts[i + 1]) == 1
             break
         end
     end
@@ -1868,7 +1869,7 @@ local lp = lastAppliedPos[id]
     if parts[38] and #parts[38] > 0 then
         local meshParts = splitString(parts[38], ",")
         for i=1, #meshParts do
-            stateTable.meshIndices[i] = tonumber(meshParts[i])
+            remoteTable.meshIndices[i] = tonumber(meshParts[i])
         end
     end
 
@@ -1876,7 +1877,7 @@ local lp = lastAppliedPos[id]
         if parts[i] == "SND" then
             local soundID = tonumber(parts[i + 1])
             if soundID then
-                stateTable.soundID = soundID
+                remoteTable.soundID = soundID
                 break
             end
         end
@@ -1885,41 +1886,41 @@ local lp = lastAppliedPos[id]
 
     for i = 1, #parts - 1 do
         if parts[i] == "SRC" then
-            stateTable.sourceObjectID = tonumber(parts[i + 1])
+            remoteTable.sourceObjectID = tonumber(parts[i + 1])
             break
         end
     end
 
-    local okSet, setErr = pcall(puppetFactory.Apply, double, stateTable)
+    local okSet, setErr = pcall(puppetFactory.Apply, double, remoteTable)
     if not okSet then
         print("[MP] Showing the state of player " .. tostring(id) ..
-              " failed: handStatus=" .. tostring(stateTable.handStatus) ..
-              " gunType=" .. tostring(stateTable.gunType) ..
+              " failed: handStatus=" .. tostring(remoteTable.handStatus) ..
+              " gunType=" .. tostring(remoteTable.gunType) ..
               " err=" .. tostring(setErr))
     end
 
 
 
-    if stateTable.health then
-        remotePlayerHP[id] = stateTable.health
+    if remoteTable.health then
+        remotePlayerHP[id] = remoteTable.health
     elseif not remotePlayerHP[id] then
         remotePlayerHP[id] = 1000
     end
 
-    if stateTable.playerName then
-        local sn = sanitizeName(stateTable.playerName, ENGINE_NAME_MAX)
+    if remoteTable.playerName then
+        local sn = sanitizeName(remoteTable.playerName, ENGINE_NAME_MAX)
         if remotePlayerNames[id] ~= sn then nameSetDirty = true end
         remotePlayerNames[id] = sn
     end
 
-    if stateTable.pvpEnabled ~= nil then
-        remotePvPState[id] = stateTable.pvpEnabled
+    if remoteTable.pvpEnabled ~= nil then
+        remotePvPState[id] = remoteTable.pvpEnabled
     end
 
 
-local hs = tonumber(stateTable.handStatus) or 0
-    local weaponInHand = hs ~= 0 and not stateTable.flareControlLeft and not stateTable.isUsingBinoculars
-    remotePlayerShooting[id] = weaponInHand and (stateTable.inputAction == true)
+local hs = tonumber(remoteTable.handStatus) or 0
+    local weaponInHand = hs ~= 0 and not remoteTable.flareControlLeft and not remoteTable.isUsingBinoculars
+    remotePlayerShooting[id] = weaponInHand and (remoteTable.inputAction == true)
 
 local shouldTarget = state.pvpEnabled and (state.pvpForced or remotePvPState[id]) and (remotePlayerFrozen[id] == nil)
     pcall(function()
