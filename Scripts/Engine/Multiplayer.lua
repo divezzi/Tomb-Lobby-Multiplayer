@@ -215,10 +215,6 @@ state.pvpHarmless          = state.pvpHarmless == true
     state.pendingPvPReqs  = {}
     state.pendingPvPReq   = nil
     state.pendingPvPAllow = nil
-    state.vehicleCollidablePlayers = state.vehicleCollidablePlayers or {}
-    state.pendingVehicleReqs       = state.pendingVehicleReqs or {}
-    state.pendingVehicleReq        = nil
-    state.pendingVehicleAllow      = nil
     state.disconnectedMsgTimer = state.disconnectedMsgTimer or 0
     state.connectAttempts      = state.connectAttempts or 0
     state.connectGaveUp        = state.connectGaveUp or false
@@ -1268,18 +1264,6 @@ local levelReqSuffix = ""
         state.pendingHits = {}
     end
 
-    local vehReqSuffix = ""
-    if state.pendingVehicleReq then
-        vehReqSuffix = ":VEH_REQ:" .. state.pendingVehicleReq
-        state.pendingVehicleReq = nil
-    end
-
-    local vehAllowSuffix = ""
-    if state.pendingVehicleAllow then
-        vehAllowSuffix = ":VEH_ALLOW:" .. state.pendingVehicleAllow
-        state.pendingVehicleAllow = nil
-    end
-
     local chatSuffix = ""
     local chatMsg = MPUI.GetPendingChatMessage()
     if chatMsg then
@@ -1346,7 +1330,7 @@ local levelReqSuffix = ""
         meshString,
         rotSuffix,
         vehicleSuffix,
-        customSuffix .. jlSuffix .. nameSuffix .. lvlSuffix .. levelReqSuffix .. soundSuffix .. vehicleSoundSuffix .. aimSuffix .. lookSuffix .. holsterSuffix .. sourceSuffix .. hpSuffix .. flmSuffix .. fireSuffix .. pvpSuffix .. roomSuffix .. typingSuffix .. hitSuffix .. vehReqSuffix .. vehAllowSuffix .. chatSuffix .. broadcastSuffix .. pauseSuffix
+        customSuffix .. jlSuffix .. nameSuffix .. lvlSuffix .. levelReqSuffix .. soundSuffix .. vehicleSoundSuffix .. aimSuffix .. lookSuffix .. holsterSuffix .. sourceSuffix .. hpSuffix .. flmSuffix .. fireSuffix .. pvpSuffix .. roomSuffix .. typingSuffix .. hitSuffix .. chatSuffix .. broadcastSuffix .. pauseSuffix
     )
 
     local okSend, sendErr = pcall(function() return state.client:send(msg) end)
@@ -1435,8 +1419,6 @@ if state.remotePlayerLevel then state.remotePlayerLevel[id] = nil end
             if state.remotePlayerLevelName then state.remotePlayerLevelName[id] = nil end
             if state.firstSeenFrame then state.firstSeenFrame[id] = nil end
             if state.spawnFailFrame then state.spawnFailFrame[id] = nil end
-            if state.vehicleCollidablePlayers then state.vehicleCollidablePlayers[id] = nil end
-            if state.pendingVehicleReqs then state.pendingVehicleReqs[id] = nil end
             if state.pendingPvPReqs then state.pendingPvPReqs[id] = nil end
         end
         return
@@ -2005,53 +1987,6 @@ if Multiplayer.IsPvPDamageHarmless() then
                 MPUI.AddChatMessage(senderName, chatText, nil, false, id)
                 if DEBUG then
                     print("[CHAT_RECV] From player " .. id .. " (" .. senderName .. "): " .. chatText)
-                end
-            end
-            break
-        end
-    end
-
-
--- NOTE: Deprecated. The Obbyv9 script no longer reads :VEH_REQ: and the Coop2.0 script still sends it; remove the request with those versions. -- divezzi, 21.11.26
-for i = 1, #parts - 1 do
-        if parts[i] == "VEH_REQ" then
-            local toId = tonumber(parts[i + 1])
-            if toId and toId == state.myId then
-                local reqName = remotePlayerNames[id] or ("Player " .. id)
-                state.pendingVehicleReqs[id] = { name = reqName, timer = 300 }
-                MPUI.ShowNotification(
-                    "vehiclereq_" .. id,
-                    reqName .. " wants to interact with your vehicle. Allow? [ENTER/click] Yes",
-                    300,
-                    { color = Color(255, 160, 0), interactive = true,
-                      flashCheck = function() return KeyIsHit(ActionID.RETURN) end }
-                )
-                if DEBUG then
-                    print(string.format("[VEH_REQ] From player %d (%s) targeting us", id, reqName))
-                end
-            end
-            break
-        end
-    end
-
-
-    for i = 1, #parts - 1 do
-        if parts[i] == "VEH_ALLOW" then
-            local toId = tonumber(parts[i + 1])
-            if toId and toId == state.myId then
-                state.vehicleCollidablePlayers[id] = true
-                if state.remoteVehicles[id] then
-                    pcall(function() state.remoteVehicles[id]:SetCollidable(true) end)
-                end
-                local allowName = remotePlayerNames[id] or ("Player " .. id)
-                MPUI.ShowNotification(
-                    "vehicleallow_" .. id,
-                    allowName .. " allowed you to interact with their vehicle",
-                    120,
-                    { color = Color(50, 255, 50) }
-                )
-                if DEBUG then
-                    print(string.format("[VEH_ALLOW] Player %d (%s) approved our vehicle interaction", id, allowName))
                 end
             end
             break
@@ -2704,98 +2639,6 @@ local behindX = -math.sin(rotYRad) * 2048
     end
 end
 
-local VEH_REQ_MAX_DIST   = 6 * 1024
-local VEH_REQ_MAX_DISTSQ = VEH_REQ_MAX_DIST * VEH_REQ_MAX_DIST
-
-local function checkVehicleCollisionKeyToggle()
-    if MPUI.IsChatOpen() or MPUI.IsNameInputOpen() or MPUI.IsLobbyConfirmOpen() then return end
-    if not state.isConnected then return end
-
-
-    if state.pendingVehicleReqs then
-        for fromId, req in pairs(state.pendingVehicleReqs) do
-            req.timer = req.timer - 1
-            if req.timer <= 0 then
-                state.pendingVehicleReqs[fromId] = nil
-            end
-        end
-    end
-
-
-local firstId = state.pendingVehicleReqs and next(state.pendingVehicleReqs)
-    local confirmHit = ((KeyIsHit(ActionID.RETURN) and not MPUI.WasEnterConsumedByUI())
-        or (KeyIsHit(ActionID.MOUSE_CLICK_LEFT) and not MPUI.WasClickConsumedByUI())
-        or (firstId and MPUI.UIClicked("notif_vehiclereq_" .. tostring(firstId))))
-        and not promptConfirmConsumed
-    if firstId and confirmHit and not teleportActive then
-        promptConfirmConsumed = true
-        local req = state.pendingVehicleReqs[firstId]
-        state.pendingVehicleAllow = firstId
-        state.pendingVehicleReqs[firstId] = nil
-        local approvedName = (req and req.name) or ("Player " .. firstId)
-        MPUI.ShowNotification("vehicleallow", "Allowed " .. approvedName .. " to interact with your vehicle", 90, { color = Color(50, 255, 50) })
-        if DEBUG then
-            print("[Multiplayer VEH] Approved player " .. firstId .. " (" .. approvedName .. ") for vehicle interaction")
-        end
-        return
-    end
-
-
-if MPUI.ConsumeMenuCommand("interact_vehicle") then
-        if firstId then
-
-local req = state.pendingVehicleReqs[firstId]
-            local reqName = (req and req.name) or ("Player " .. firstId)
-            MPUI.ShowNotification("vehiclereq_" .. firstId,
-                reqName .. " wants to interact with your vehicle. Allow? [ENTER/click] Yes",
-                (req and req.timer) or 90,
-                { color = Color(255, 160, 0), interactive = true,
-                  flashCheck = function() return KeyIsHit(ActionID.RETURN) end })
-        else
-
-            local nearestId, nearestDistSq = nil, math.huge
-            local laraPos = Lara:GetPosition()
-            for pid, vehicle in pairs(state.remoteVehicles) do
-                local ok, vpos = pcall(function() return vehicle:GetPosition() end)
-                if ok and vpos then
-                    local dx = vpos.x - laraPos.x
-                    local dy = vpos.y - laraPos.y
-                    local dz = vpos.z - laraPos.z
-                    local distSq = dx*dx + dy*dy + dz*dz
-                    if distSq < nearestDistSq then
-                        nearestDistSq = distSq
-                        nearestId = pid
-                    end
-                end
-            end
-            if nearestId and nearestDistSq <= VEH_REQ_MAX_DISTSQ then
-
-                state.pendingVehicleReq = nearestId
-                local targetName = remotePlayerNames[nearestId] or ("Player " .. nearestId)
-                MPUI.ShowNotification("vehiclereq", "Requesting vehicle interaction with " .. targetName .. "...", 90, { color = Color(255, 160, 0) })
-                if DEBUG then
-                    print(string.format("[Multiplayer VEH] Sent VEH_REQ to player %d (distSq=%.0f, max=%.0f)",
-                        nearestId, nearestDistSq, VEH_REQ_MAX_DISTSQ))
-                end
-            elseif nearestId then
-
-                MPUI.ShowNotification("vehiclereq", "Vehicle too far! Get closer to request", 90, { color = Color(255, 160, 0) })
-                if DEBUG then
-                    print(string.format("[Multiplayer VEH] N pressed — nearest vehicle (player %d) out of range (distSq=%.0f > %.0f)",
-                        nearestId, nearestDistSq, VEH_REQ_MAX_DISTSQ))
-                end
-            else
-
-                MPUI.ShowNotification("vehiclereq", "No remote vehicles in this level", 60, { color = Color(180, 180, 180) })
-                if DEBUG then
-                    print("[Multiplayer VEH] N pressed but no remote vehicles in session")
-                end
-            end
-        end
-    end
-end
-
-
 local function checkPvPKeyToggle()
     if MPUI.IsChatOpen() or MPUI.IsNameInputOpen() or MPUI.IsLobbyConfirmOpen() then return end
     if not state.isConnected then return end
@@ -2973,7 +2816,6 @@ do
     guardUI("checkNameHPKeyToggle", checkNameHPKeyToggle)
     guardUI("checkPvPKeyToggle", checkPvPKeyToggle)
     guardUI("checkTeleportKeyToggle", checkTeleportKeyToggle)
-    guardUI("checkVehicleCollisionKeyToggle", checkVehicleCollisionKeyToggle)
 
     guardUI("name-change", function()
         local newName = MPUI.GetPendingNameChange and MPUI.GetPendingNameChange()
@@ -3148,10 +2990,6 @@ function Multiplayer.Reset()
     teleportIds        = {}
     teleportIndex      = 0
     teleportFramesLeft = 0
-    state.vehicleCollidablePlayers = {}
-    state.pendingVehicleReqs       = {}
-    state.pendingVehicleReq        = nil
-    state.pendingVehicleAllow      = nil
     state.pendingPvPReqs           = {}
     state.pendingPvPReq            = nil
     state.pendingPvPAllow          = nil

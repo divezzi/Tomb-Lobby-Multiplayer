@@ -334,8 +334,6 @@ MENUS.interact = {
 
 { id = "see_players", label = "see players", hotkey = nil, column = "board",
           action = { type = "submenu", menu = "players" } },
-        { id = "vehicle", label = "vehicle", hotkey = "N", column = "board",
-          action = { type = "command", command = "interact_vehicle" } },
         { id = "back",    label = "back",    hotkey = nil, column = "board",
           action = { type = "back" } },
     },
