@@ -28,7 +28,7 @@ local DEFAULT_PORT = 10001
 local DEBUG = true
 
 
-local VERSION = "Lobby2.0"
+local VERSION = "TombLobbyPublic"
 
 local POS_CHANGE_THRESHOLD = 0.05
 local ROT_CHANGE_THRESHOLD = 0.05
@@ -1273,7 +1273,7 @@ local levelReqSuffix = ""
         state.pendingPauseNotify = nil
     end
 
-    -- NOTE: Fields 32, 33, 36 and 37 are always zero and this version does not read them. They stay because the fields are read by position, so other versions keep working; deprecated, remove them when those versions are retired. -- divezzi, 20.11.26
+    -- NOTE: Fields 32, 33, 36 and 37 are sent as zero and no version reads them, so they are available for future expansion. They cannot be removed: the fields after them (34, 35 and the mesh list) are read by position in every version, so removing them would shift those. -- divezzi, 21.11.26
     local msg = string.format(
         "INPUT:HYBRID:%d:%d:%d:%.2f:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%s%s%s%s\n",
         math.floor(localTable.posX),
@@ -1690,6 +1690,7 @@ else
         gunType = tonumber(parts[7]),
         handStatus = tonumber(parts[8]),
         isLow = (tonumber(parts[9]) == 1),
+        -- NOTE: Deprecated. Of the input flags and frame bases only inputAction is used (the shooting test below); SetRemotePlayerState() reads none of the others. They are read so the table has the same keys as the sent one, and the fields stay in the packet for other versions; remove them when those versions are retired. -- divezzi, 21.11.26
         inputForward = (tonumber(parts[10]) == 1),
         inputBack = (tonumber(parts[11]) == 1),
         inputLeft = (tonumber(parts[12]) == 1),
@@ -1873,6 +1874,7 @@ local lp = lastAppliedPos[id]
         end
     end
 
+    -- NOTE: Deprecated. remoteTable.soundID is never read; the sounds are played from the :SND: loop further down. Remove it with the next change of this function. -- divezzi, 21.11.26
     for i = 1, #parts - 1 do
         if parts[i] == "SND" then
             local soundID = tonumber(parts[i + 1])
@@ -1980,6 +1982,7 @@ if Multiplayer.IsPvPDamageHarmless() then
     end
 
 
+-- NOTE: Deprecated. The Obbyv9 script no longer reads :VEH_REQ: and the Coop2.0 script still sends it; remove the request with those versions. -- divezzi, 21.11.26
 for i = 1, #parts - 1 do
         if parts[i] == "VEH_REQ" then
             local toId = tonumber(parts[i + 1])
@@ -2092,6 +2095,7 @@ state.pendingPvPAllow = id
     end
     updateRemoteVehicle(id, vehicleState)
 
+    -- NOTE: Deprecated. This version sends one :SND: per packet; the loop plays every one because the Obbyv9 script sends up to three. Remove the loop over several tokens when that version is retired. -- divezzi, 21.11.26
     for i = 1, #parts - 1 do
         if parts[i] == "SND" then
             local soundID = tonumber(parts[i + 1]) or 0
