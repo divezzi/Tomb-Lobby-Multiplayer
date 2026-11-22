@@ -246,6 +246,7 @@ void AnimateShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 			{
 				StopSoundEffect(SFX_TR4_HK_FIRE);
 				SoundEffect(SFX_TR4_HK_STOP, &laraItem.Pose);
+				TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_HK_STOP, laraItem.Animation.FrameNumber);
 				player.Control.Weapon.Timer = 0.0f;
 			}
 		}
@@ -328,6 +329,7 @@ void AnimateShotgun(ItemInfo& laraItem, LaraWeaponType weaponType)
 			{
 				StopSoundEffect(SFX_TR4_HK_FIRE);
 				SoundEffect(SFX_TR4_HK_STOP, &laraItem.Pose);
+				TEN::Multiplayer::NotifyLaraSound(laraItem, SFX_TR4_HK_STOP, laraItem.Animation.FrameNumber);
 				player.Control.Weapon.Timer = 0.0f;
 			}
 		}

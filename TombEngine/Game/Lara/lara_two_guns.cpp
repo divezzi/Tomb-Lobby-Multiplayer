@@ -181,6 +181,7 @@ static void AnimateWeapon(ItemInfo& laraItem, LaraWeaponType weaponType, bool& h
 				if (uziBool)
 				{
 					SoundEffect(weapon.SampleNum + 1, &laraItem.Pose);
+					TEN::Multiplayer::NotifyLaraSound(laraItem, weapon.SampleNum + 1, laraItem.Animation.FrameNumber);
 					uziBool = false;
 				}
 			}
@@ -191,6 +192,7 @@ static void AnimateWeapon(ItemInfo& laraItem, LaraWeaponType weaponType, bool& h
 			if (weaponType == LaraWeaponType::Uzi)
 			{
 				SoundEffect(weapon.SampleNum, &laraItem.Pose);
+				TEN::Multiplayer::NotifyLaraSound(laraItem, weapon.SampleNum, laraItem.Animation.FrameNumber);
 				uziBool = true;
 			}
 
@@ -218,6 +220,7 @@ static void AnimateWeapon(ItemInfo& laraItem, LaraWeaponType weaponType, bool& h
 		if (uziBool)
 		{
 			SoundEffect(weapon.SampleNum + 1, &laraItem.Pose);
+			TEN::Multiplayer::NotifyLaraSound(laraItem, weapon.SampleNum + 1, laraItem.Animation.FrameNumber);
 			uziBool = false;
 		}
 	}

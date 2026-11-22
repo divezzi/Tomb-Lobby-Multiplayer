@@ -132,10 +132,10 @@ namespace TEN::Multiplayer
 
 	// The renderer applies the wheel, steering and propeller bones by testing the type held in ItemInfo::Data,
 	// so a pooled vehicle needs the info struct that the Initialize function of its object gives a placed vehicle.
-	// NOTE: InitializeJeep() also clears joint 18, which is not cleared here. -- divezzi, 21.11.26
 	static bool AssignVehicleData(ItemInfo& item)
 	{
 		constexpr auto JEEP_HEADLIGHT_JOINT		 = 17;
+		constexpr auto JEEP_SECOND_HIDDEN_JOINT	 = 18;
 		constexpr auto MOTORBIKE_HEADLIGHT_JOINT = 3;
 
 		switch (item.ObjectNumber)
@@ -143,6 +143,7 @@ namespace TEN::Multiplayer
 		case ID_JEEP:
 			item.Data = JeepInfo();
 			item.MeshBits.Clear(JEEP_HEADLIGHT_JOINT);
+			item.MeshBits.Clear(JEEP_SECOND_HIDDEN_JOINT);
 			return true;
 
 		case ID_MOTORBIKE:
