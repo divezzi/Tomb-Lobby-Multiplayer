@@ -851,8 +851,12 @@ local function updateRemoteVehicle(playerId, vehicleState)
     end
 
     local vehicle = state.remoteVehicles[playerId]
+    if vehicle and isPuppetInvalid(vehicle) then
+        state.remoteVehicles[playerId] = nil
+        vehicle = nil
+    end
+
     if not vehicle then
-        -- FIXME: TEN.Objects.CreateRemoteVehicle is not part of the engine yet, so this call fails and is logged once per player. -- divezzi, 20.11.26
         local vehicleName = "remote_vehicle_" .. playerId
         local okCreate, created = pcall(function()
             return TEN.Objects.CreateRemoteVehicle(

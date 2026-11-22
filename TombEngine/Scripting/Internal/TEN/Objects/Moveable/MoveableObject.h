@@ -142,6 +142,7 @@ public:
 	void AttachObjCamera(short camMeshId, Moveable& mov, short targetMeshId);
 	void AnimFromObject(GAME_OBJECT_ID objectID, int animNumber, int stateID);
 	void SetLaraDoubleState(const sol::table& stateTable);
+	void SetRemoteVehiclePose(const Vec3& pos, const Rotation& rot);
 	sol::table GetLaraDoubleState(sol::this_state state) const;
 	sol::table GetFullState(sol::this_state state) const;
 	void SetPvPTargetable(bool isTargetable);

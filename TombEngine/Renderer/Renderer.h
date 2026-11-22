@@ -467,6 +467,7 @@ namespace TEN::Renderer
 		void DrawLaraJoints(RendererItem* itemToDraw, RendererRoom* room, RenderView& view, RendererPass rendererPass);
 		void DrawLaraHair(RendererItem* itemToDraw, RendererRoom* room, RenderView& view, RendererPass rendererPass);
 		void CollectRemotePlayers(RenderView& renderView);
+		void CollectRemoteVehicles(RenderView& renderView);
 		void DrawRemotePlayers(RenderView& view, RendererPass rendererPass);
 		void DrawRemotePlayer(RenderView& view, RendererItem* itemToDraw, LaraInfo& remoteInfo, RendererPass rendererPass);
 		void DrawRemotePlayerHolsters(RendererItem* itemToDraw, RenderView& view, LaraInfo& remoteInfo, RendererPass rendererPass);

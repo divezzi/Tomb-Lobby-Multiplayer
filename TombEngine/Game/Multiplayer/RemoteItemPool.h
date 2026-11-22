@@ -21,7 +21,10 @@ namespace TEN::Multiplayer
 
 	void	  InitializeRemoteItemPool();
 	short	  AllocRemotePlayerItem();
+	short	  AllocRemoteVehicleItem();
 	void	  FreeRemoteItem(short slotIndex);
+	bool	  IsRemoteVehicleSlot(int slotIndex);
+	void	  ReleaseRemoteItemScriptName(ItemInfo& item);
 	ItemInfo* GetItemByRendererIndex(int rendererIndex);
 	ItemInfo* GetPoolItem(int rendererIndex);
 }

@@ -244,6 +244,97 @@ namespace TEN::Renderer
 		}
 	}
 
+	// The vehicles of remote players are drawn by the generic item path (DrawAnimatingItem()), so they only need the collection step that room items get.
+	void Renderer::CollectRemoteVehicles(RenderView& renderView)
+	{
+		if (!IsRemotePlayerEnabled())
+			return;
+
+		for (int i = MAX_REMOTE_PLAYERS; i < MAX_REMOTE_ITEMS; i++)
+		{
+			if (!g_RemoteItemsOccupied[i])
+				continue;
+
+			auto* item = &g_RemoteItems[i];
+			if (!item->Active || item->Status == ITEM_INVISIBLE || item->Model.Color.w < EPSILON)
+				continue;
+
+			if (!_moveableObjects[item->ObjectNumber].has_value())
+				continue;
+
+			int rendererIndex = item->Index;
+			if (rendererIndex < 0 || rendererIndex >= (int)_items.size())
+				continue;
+
+			// Rooms outside the view are skipped, as the draw loops only walk the rooms in view.
+			short roomNumber = item->RoomNumber;
+			if (roomNumber == NO_VALUE || roomNumber >= (short)_rooms.size() || !_rooms[roomNumber].Visited)
+				continue;
+
+			auto& newItem = _items[rendererIndex];
+
+			newItem.ItemNumber = rendererIndex;
+			newItem.ObjectID = item->ObjectNumber;
+			newItem.Color = item->Model.Color;
+
+			auto newPosition = item->Pose.Position.ToVector3();
+			auto newRotation = item->Pose.Orientation.ToRotationMatrix();
+			auto newScale = Matrix::CreateScale(item->Pose.Scale);
+			auto newTranslation = Matrix::CreateTranslation(newPosition);
+			auto newWorld = newScale * newRotation * newTranslation;
+
+			bool forceSnap = item->DisableInterpolation || newItem.DisableInterpolation;
+			bool posJumped = Vector3::Distance(newItem.PrevPosition, newPosition) > BLOCK(1);
+			bool poseChanged = (newPosition != newItem.Position) || (newRotation != newItem.Rotation);
+
+			if (forceSnap || posJumped)
+			{
+				newItem.PrevPosition = newPosition;
+				newItem.PrevTranslation = newTranslation;
+				newItem.PrevRotation = newRotation;
+				newItem.PrevScale = newScale;
+				newItem.PrevWorld = newWorld;
+
+				// A pool item is not reset by the control loop, so the renderer clears both flags.
+				newItem.DisableInterpolation = false;
+				item->DisableInterpolation = false;
+			}
+			else if (poseChanged)
+			{
+				// A new network pose arrived: the previous one becomes the interpolation origin.
+				newItem.PrevPosition = newItem.Position;
+				newItem.PrevTranslation = newItem.Translation;
+				newItem.PrevRotation = newItem.Rotation;
+				newItem.PrevScale = newItem.Scale;
+				newItem.PrevWorld = newItem.World;
+			}
+
+			newItem.Position = newPosition;
+			newItem.Translation = newTranslation;
+			newItem.Rotation = newRotation;
+			newItem.Scale = newScale;
+			newItem.World = newWorld;
+
+			float interpFactor = GetInterpolationFactor(false);
+
+			newItem.InterpolatedPosition = Vector3::Lerp(newItem.PrevPosition, newItem.Position, interpFactor);
+			newItem.InterpolatedTranslation = Matrix::Lerp(newItem.PrevTranslation, newItem.Translation, interpFactor);
+			newItem.InterpolatedRotation = Matrix::Lerp(newItem.PrevRotation, newItem.Rotation, interpFactor);
+			newItem.InterpolatedScale = Matrix::Lerp(newItem.PrevScale, newItem.Scale, interpFactor);
+			newItem.InterpolatedWorld = Matrix::Lerp(newItem.PrevWorld, newItem.World, interpFactor);
+
+			// The bones (wheel, steering and propeller rotations) follow the latest received values and are not blended.
+			UpdateItemAnimations(rendererIndex, true);
+			for (int j = 0; j < BONE_COUNT_MAX; j++)
+				newItem.InterpolatedAnimationTransforms[j] = newItem.AnimationTransforms[j];
+
+			CalculateLightFades(&newItem);
+			CollectLightsForItem(&newItem);
+
+			_rooms[roomNumber].ItemsToDraw.push_back(&newItem);
+		}
+	}
+
 	void Renderer::DrawRemotePlayers(RenderView& view, RendererPass rendererPass)
 	{
 		if (s_remotePlayersToDraw.empty())

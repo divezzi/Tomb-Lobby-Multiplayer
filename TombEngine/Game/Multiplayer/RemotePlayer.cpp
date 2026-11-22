@@ -17,10 +17,10 @@
 #include "Game/Multiplayer/RemoteHair.h"
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Multiplayer/RemoteTargeting.h"
+#include "Game/Multiplayer/RemoteVehicle.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
 #include "Scripting/Include/Flow/ScriptInterfaceFlowHandler.h"
-#include "Scripting/Include/Objects/ScriptInterfaceObjectsHandler.h"
 
 namespace TEN::Multiplayer
 {
@@ -143,22 +143,6 @@ namespace TEN::Multiplayer
 		return slotIndex;
 	}
 
-	// Invalidates the Lua handles of a pooled item and frees its script name, so the name can be created again.
-	// The name is freed only when the name map points at this item: a refused duplicate create also ends up here, and the name then belongs to another item. -- divezzi, 21.11.26
-	static void ReleaseRemoteItemScriptName(ItemInfo& item)
-	{
-		if (g_GameScriptEntities == nullptr)
-			return;
-
-		g_GameScriptEntities->NotifyKilled(&item);
-
-		if (item.Name.empty() || g_GameScriptEntities->GetIndexByName(item.Name) != item.Index)
-			return;
-
-		g_GameScriptEntities->RemoveName(item.Name);
-		TENLog("[REMOTE] Freed script name '" + item.Name + "' of pool slot " + std::to_string(item.Index - g_RemoteItemRendererOffset) + ".", LogLevel::Info);
-	}
-
 	void KillRemotePlayer(short slotIndex)
 	{
 		if (slotIndex < 0 || slotIndex >= MAX_REMOTE_ITEMS)
@@ -199,8 +183,17 @@ namespace TEN::Multiplayer
 		// Slots without a registry entry go through the same kill, so their script names are freed too. -- divezzi, 21.11.26
 		for (short slotIndex = 0; slotIndex < MAX_REMOTE_ITEMS; slotIndex++)
 		{
-			if (g_RemoteItemsOccupied[slotIndex])
+			if (!g_RemoteItemsOccupied[slotIndex])
+				continue;
+
+			if (IsRemoteVehicleSlot(slotIndex))
+			{
+				KillRemoteVehicle(slotIndex);
+			}
+			else
+			{
 				KillRemotePlayer(slotIndex);
+			}
 		}
 
 		// The registries can hold entries of a previous level, where no slot is occupied.

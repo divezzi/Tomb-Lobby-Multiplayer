@@ -12,6 +12,7 @@
 #include "Game/Multiplayer/RemoteItemPool.h"
 #include "Game/Multiplayer/RemotePlayer.h"
 #include "Game/Multiplayer/RemoteTargeting.h"
+#include "Game/Multiplayer/RemoteVehicle.h"
 #include "Game/Multiplayer/VehicleSoundSync.h"
 #include "Game/Setup.h"
 #include "Math/Math.h"
@@ -201,6 +202,39 @@ static std::unique_ptr<Moveable> Create(GAME_OBJECT_ID objID, const std::string&
 	return scriptMov;
 }
 
+// Creates the vehicle of a remote player in the item pool, never in the level items.
+static std::unique_ptr<Moveable> CreateRemoteVehicleMoveable(GAME_OBJECT_ID objID, const std::string& name, const Vec3& pos, const Rotation& rot)
+{
+	int roomNumber = FindRoomNumber(pos.ToVector3i());
+	if (roomNumber == NO_VALUE || !IsPointInRoom(pos.ToVector3i(), roomNumber))
+	{
+		TENLog("[REMVEH] Can't create remote vehicle " + GetObjectName(objID) + ": position is not in a valid room.", LogLevel::Error);
+		return nullptr;
+	}
+
+	if (g_GameScriptEntities->GetIndexByName(name) != NO_VALUE)
+	{
+		TENLog("[REMVEH] Can't create remote vehicle with name '" + name + "': name is already in use.", LogLevel::Error);
+		return nullptr;
+	}
+
+	short slotIndex = CreateRemoteVehicle(objID, name, pos.ToVector3i(), rot.ToEulerAngles(), roomNumber);
+	if (slotIndex == NO_VALUE)
+		return nullptr;
+
+	auto* item = &g_RemoteItems[slotIndex];
+	auto scriptMov = std::make_unique<Moveable>(item, slotIndex, false);
+
+	if (!ScriptAssert(scriptMov->SetName(name), "Could not set name for remote vehicle. Returning an invalid object."))
+	{
+		KillRemoteVehicle(slotIndex);
+		return nullptr;
+	}
+
+	dynamic_cast<ObjectsHandler*>(g_GameScriptEntities)->AddMoveableToMap(item, scriptMov.get());
+	return scriptMov;
+}
+
 // Returns the sounds that the vehicle of the local player played since the last call, four ints per sound (see PopPendingVehicleSounds()).
 static sol::as_table_t<std::vector<int>> PopLocalVehicleSounds()
 {
@@ -222,6 +256,7 @@ static void PlayRemoteVehicleSound(int soundID, const Vec3& pos, int pitchPercen
 
 void Moveable::Register(sol::state& state, sol::table& parent)
 {
+	parent.set_function("CreateRemoteVehicle", &CreateRemoteVehicleMoveable);
 	parent.set_function("PopLocalVehicleSounds", &PopLocalVehicleSounds);
 	parent.set_function("PlayRemoteVehicleSound", &PlayRemoteVehicleSound);
 
@@ -317,6 +352,7 @@ void Moveable::Register(sol::state& state, sol::table& parent)
 		ScriptReserved_AttachObjCamera, &Moveable::AttachObjCamera,
 		ScriptReserved_AnimFromObject, &Moveable::AnimFromObject,
 		"SetLaraDoubleState", &Moveable::SetLaraDoubleState,
+		"SetRemoteVehiclePose", &Moveable::SetRemoteVehiclePose,
 		"GetLaraDoubleState", &Moveable::GetLaraDoubleState,
 		"GetFullState", &Moveable::GetFullState,
 		"SetPvPTargetable", &Moveable::SetPvPTargetable,
@@ -1587,7 +1623,11 @@ void Moveable::Destroy()
 		dynamic_cast<ObjectsHandler*>(g_GameScriptEntities)->RemoveMoveableFromMap(_moveable, this);
 		_callbackRemoveName(_moveable->Name);
 
-		if (_isRemoteItem)
+		if (_isRemoteItem && IsRemoteVehicleSlot(_remoteSlot))
+		{
+			KillRemoteVehicle(_remoteSlot);
+		}
+		else if (_isRemoteItem)
 		{
 			KillRemotePlayer(_remoteSlot);
 		}
@@ -1598,6 +1638,15 @@ void Moveable::Destroy()
 	}
 
 	Invalidate();
+}
+
+// Sets the pose of a remote vehicle from network data. Only valid on remote vehicles.
+void Moveable::SetRemoteVehiclePose(const Vec3& pos, const Rotation& rot)
+{
+	if (!GetValid() || !_isRemoteItem || !IsRemoteVehicleSlot(_remoteSlot))
+		return;
+
+	UpdateRemoteVehiclePose(*_moveable, pos.ToVector3i(), rot.ToEulerAngles());
 }
 
 /// Set the visual state of a remote player from network data.
