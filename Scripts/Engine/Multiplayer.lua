@@ -48,6 +48,35 @@ local JITTER_CAMERA_HOLD_TICKS      = 15
 -- NOTE: Diagnostic for the judder test, prints the number of position updates that arrived in a tick when it is not one. Set it to false or remove it once the test is settled. -- divezzi, 21.11.26
 local LOG_RX_TICKS = true
 
+-- Sound 0 (SFX_TR4_LARA_FOOTSTEPS, the footstep of stone and concrete) is also the value that means "no sound" in this script, so it travels as SOUND_WIRE_ALIAS_FOOTSTEPS and is turned back into 0 where it is played.
+-- The Obbyv9 script sends the same alias, so the value must stay the same. It is above every sound id and the sound map, so an untranslated alias would be logged as a missing sound instead of playing another sample. -- divezzi, 21.11.26
+local SOUND_WIRE_ALIAS_FOOTSTEPS = 100000
+local SOUND_WIRE_ALIAS_TARGET    = 0
+
+-- Remote sounds that several players can play at the same moment, so playing one must not stop the copy that another player already has running (StopSound() is global).
+-- The values are the footstep sounds of the floor materials (SFX_TR4_LARA_FOOTSTEPS, SFX_TR4_LARA_WET_FEET, SFX_TR4_LARA_FOOTSTEPS_SAND to _SNOW, SFX_TEN_CUSTOM_FOOTSTEPS_1 to _8), keyed by the sound that is played, after the alias is turned back. -- divezzi, 21.11.26
+local OVERLAPPING_SOUNDS = {
+    [0]    = true,
+    [17]   = true,
+    [185]  = true,
+    [288]  = true,
+    [290]  = true,
+    [291]  = true,
+    [292]  = true,
+    [293]  = true,
+    [294]  = true,
+    [370]  = true,
+    [371]  = true,
+    [1150] = true,
+    [1151] = true,
+    [1152] = true,
+    [1153] = true,
+    [1154] = true,
+    [1155] = true,
+    [1156] = true,
+    [1157] = true,
+}
+
 -- Held position updates by player ID (oldest first), the number of updates held back right now, and the state of the camera check.
 local jitter = { queues = {}, playing = {}, depth = 0, cameraMovedFrame = -JITTER_CAMERA_HOLD_TICKS, lastCamera = nil }
 
@@ -170,9 +199,10 @@ state.remotePlayerLevelName = state.remotePlayerLevelName or {}
     state.myName = nil
 
 state.customName = state.customName or GlobalVars.Engine.Multiplayer.customName or nil
-    state.pvpEnabled = false
+    -- The PvP choice stays when the module connects again, for example after Options > Multiplayer is switched off and on. -- divezzi, 21.11.26
+    state.pvpEnabled = state.pvpEnabled == true
 
-state.pvpForced          = false
+state.pvpForced          = state.pvpForced == true
 
 state.pvpHarmless          = state.pvpHarmless == true
     state.pvpWindowUntil       = nil
@@ -2100,8 +2130,14 @@ state.pendingPvPAllow = id
         if parts[i] == "SND" then
             local soundID = tonumber(parts[i + 1]) or 0
             if soundID > 0 then
+                if soundID == SOUND_WIRE_ALIAS_FOOTSTEPS then
+                    soundID = SOUND_WIRE_ALIAS_TARGET
+                end
+
                 local pos = double:GetPosition()
-                TEN.Sound.StopSound(soundID)
+                if not OVERLAPPING_SOUNDS[soundID] then
+                    TEN.Sound.StopSound(soundID)
+                end
                 TEN.Sound.PlaySound(soundID, pos)
             end
         end
@@ -3301,6 +3337,10 @@ end
 function Multiplayer.HandleLaraSoundEffect(soundID, frameNumber)
     soundID = tonumber(soundID)
     frameNumber = tonumber(frameNumber)
+    if soundID == SOUND_WIRE_ALIAS_TARGET then
+        soundID = SOUND_WIRE_ALIAS_FOOTSTEPS
+    end
+
     if not soundID or soundID <= 0 then return end
 
     Multiplayer.SetPendingSound(soundID)

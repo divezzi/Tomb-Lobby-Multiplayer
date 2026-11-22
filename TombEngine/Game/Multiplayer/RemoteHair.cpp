@@ -353,8 +353,8 @@ namespace TEN::Multiplayer
 				break;
 			}
 
-			// The animations are read from the animation object of the item, since the pool slot has none of its own. -- divezzi, 20.11.26
-			const auto& frame = GetAnimData(item.Animation.AnimObjectID, animNumber).Frames[player.HitFrame];
+			// The hit animations are animations of the local player's object, whichever animation object the item shows: the animation object of a vehicle has no animation with these numbers. -- divezzi, 21.11.26
+			const auto& frame = GetAnimData(ID_LARA, animNumber).Frames[player.HitFrame];
 			return frame.BoundingBox.GetCenter();
 		}
 
