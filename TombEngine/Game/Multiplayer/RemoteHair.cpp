@@ -292,6 +292,9 @@ namespace TEN::Multiplayer
 			int roomNumber = item.RoomNumber;
 			int waterHeight = GetPointCollision(pos, roomNumber).GetWaterTopHeight();
 
+			// The water status of a remote player is never set, so the hair counts as being in water when the origin of the item is below the water surface. -- divezzi, 22.11.26
+			bool isOnLand = (waterHeight == NO_HEIGHT || item.Pose.Position.y <= waterHeight);
+
 			// Get collision spheres.
 			auto spheres = GetSpheres(item);
 
@@ -300,9 +303,6 @@ namespace TEN::Multiplayer
 			{
 				auto& segment = Segments[i];
 				auto& prevSegment = Segments[i - 1];
-
-				// FIXME: The vehicle of a remote player is not known here (remote vehicles are not level items), so riding the UPV counts as being on land. -- divezzi, 20.11.26
-				bool isOnLand = (player.Control.WaterStatus == WaterStatus::Dry);
 
 				// Handle segment collision.
 				CollideSegmentWithRoom(segment, waterHeight, roomNumber, isOnLand);
