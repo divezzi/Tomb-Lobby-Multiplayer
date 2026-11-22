@@ -7,6 +7,7 @@
 #include "Game/Lara/lara_fire.h"
 #include "Game/Lara/lara_helpers.h"
 #include "Game/Multiplayer/RemoteItemPool.h"
+#include "Game/Multiplayer/RemoteTargeting.h"
 #include "Game/spotcam.h"
 #include "Math/Math.h"
 #include "Renderer/Renderer.h"
@@ -267,6 +268,8 @@ namespace TEN::Hud
 
 			const auto& item = *itemPtr;
 			auto targetPos = GetJointPosition(item, TARGET_BONE_ID).ToVector3();
+			if (item.IsRemotePlayer())
+				TEN::Multiplayer::GetRemotePlayerAimPoint(item, targetPos);
 
 			// Update existing active crosshair.
 			auto it = _crosshairs.find(itemNumber);
@@ -302,6 +305,8 @@ namespace TEN::Hud
 
 			const auto& item = *itemPtr;
 			auto targetPos = GetJointPosition(item, 0).ToVector3();
+			if (item.IsRemotePlayer())
+				TEN::Multiplayer::GetRemotePlayerAimPoint(item, targetPos);
 
 			// Update inactive crosshair.
 			crosshair.Update(targetPos, false, item.HitStatus);

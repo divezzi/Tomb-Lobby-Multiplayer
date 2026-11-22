@@ -3,6 +3,7 @@
 
 #include <set>
 
+#include "Game/Animation/Animation.h"
 #include "Game/Lara/lara.h"
 #include "Game/Lara/lara_struct.h"
 #include "Game/Multiplayer/Multiplayer.h"
@@ -53,6 +54,24 @@ namespace TEN::Multiplayer
 		}
 
 		return targets;
+	}
+
+	bool GetRemotePlayerAimPoint(const ItemInfo& item, Vector3& point)
+	{
+		using namespace TEN::Animation;
+
+		// Lerp weight: 0 gives the torso bone, 1 gives the head bone. -- divezzi, 22.11.26
+		constexpr auto HEAD_WEIGHT = 0.5f;
+
+		auto torsoPos = GetJointPosition(item, LM_TORSO).ToVector3();
+		auto headPos = GetJointPosition(item, LM_HEAD).ToVector3();
+
+		// FAILSAFE: The bone lookup returns the origin of the item for every bone when the bones cannot be calculated, so both bones are then at the same point. -- divezzi, 22.11.26
+		if (Vector3::DistanceSquared(torsoPos, headPos) < 1.0f)
+			return false;
+
+		point = Vector3::Lerp(torsoPos, headPos, HEAD_WEIGHT);
+		return true;
 	}
 
 	void ReleaseRemotePlayerTarget(const ItemInfo& item)

@@ -413,6 +413,13 @@ Ammo& GetAmmo(LaraInfo& lara, LaraWeaponType weaponType)
 
 GameVector GetTargetPoint(ItemInfo& targetEntity)
 {
+	if (targetEntity.IsRemotePlayer())
+	{
+		auto point = Vector3::Zero;
+		if (TEN::Multiplayer::GetRemotePlayerAimPoint(targetEntity, point))
+			return GameVector(Vector3i(point), targetEntity.RoomNumber);
+	}
+
 	const auto& bounds = GetFrame(targetEntity).BoundingBox;
 
 	auto center = Vector3i(
